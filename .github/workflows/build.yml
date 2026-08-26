@@ -131,6 +131,25 @@ jobs:
               print(f"Fixed {changed} Kconfig $(shell,...) patterns")
           else:
               print("No Kconfig $(shell,...) patterns needed fixing")
+
+          # 修复 munch Makefile 的 CC 定义 bug:
+          # L435 无条件用 $(REAL_CC),但 LLVM=1 时 REAL_CC 未定义(空)
+          # -> CC = python gcc-wrapper.py (空编译器) -> Popen 执行编译选项失败
+          # 修复:条件化,LLVM 时用 L401 的 CC=clang
+          mk = Path("Makefile")
+          msrc = mk.read_text()
+          old_cc = "CC\t\t= $(PYTHON) $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)"
+          new_cc = (
+              "ifeq ($(LLVM),)\n"
+              "CC\t\t= $(PYTHON) $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)\n"
+              "endif"
+          )
+          if old_cc in msrc:
+              msrc = msrc.replace(old_cc, new_cc, 1)
+              mk.write_text(msrc)
+              print("Patched Makefile: CC wrapper now only when !LLVM")
+          else:
+              print("Makefile CC line not found (maybe already patched)")
           PY
 
           # zip 解压丢失 Unix 文件权限,给所有脚本加执行位
