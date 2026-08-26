@@ -667,6 +667,25 @@ jobs:
               print("boot_event.c: stubbed ksu_observer_init call")
           else:
               print("WARNING: boot_event.c observer call not found")
+
+          # ========== 5. task_work 枚举 + fallthrough 宏 (4.19 兼容) ==========
+          # 4.19 的 task_work_add 第三参数是 bool(非 TWA_RESUME 枚举)
+          # fallthrough 宏 5.1+ 才有,GCC 直接支持 __attribute__((fallthrough))
+          for f in ["drivers/kernelsu/policy/allowlist.c", "drivers/kernelsu/supercall/supercall.c"]:
+              p = Path(f)
+              s = p.read_text().replace("\r\n", "\n")
+              changed = False
+              if "TWA_RESUME" in s:
+                  s = s.replace("TWA_RESUME", "true")
+                  changed = True
+              if "fallthrough;" in s:
+                  s = s.replace("fallthrough;", "__attribute__((fallthrough));")
+                  changed = True
+              if changed:
+                  p.write_text(s)
+                  print(f"{f}: patched (TWA_RESUME->true, fallthrough->attr)")
+              else:
+                  print(f"{f}: no changes needed")
           PY
 
       - name: Check out pinned AnyKernel3
