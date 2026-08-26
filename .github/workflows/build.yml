@@ -69,6 +69,33 @@ jobs:
           test -f kernel/drivers/kernelsu/Kconfig
           echo "kernel tree OK"
 
+      - name: Normalize CRLF to LF in Kconfig files
+        working-directory: kernel
+        run: |
+          # 本地集成脚本在 Windows 上写过 4 个 Kconfig 文件,产生 CRLF 行尾
+          # Linux Kconfig 解析器不认 CRLF,把 \r 当 unsupported character
+          python3 - <<'PY'
+          from pathlib import Path
+
+          fixed = 0
+          # 只处理 Kconfig 文件(其他 .c/.h/.py 有 CRLF 不影响构建)
+          for p in Path(".").rglob("Kconfig*"):
+              try:
+                  data = p.read_bytes()
+              except Exception:
+                  continue
+              if b'\r\n' in data:
+                  p.write_bytes(data.replace(b'\r\n', b'\n'))
+                  fixed += 1
+          print(f"Fixed {fixed} Kconfig files (CRLF -> LF)")
+          # 关键路径二次确认
+          for critical in ['Kconfig', 'drivers/Kconfig', 'drivers/kernelsu/Kconfig', 'KernelSU/Kconfig']:
+              p = Path(critical)
+              if p.exists():
+                  crlf = b'\r\n' in p.read_bytes()
+                  print(f"  {critical}: CRLF={crlf}")
+          PY
+
       - name: Check out pinned AnyKernel3
         uses: actions/checkout@v4
         with:
