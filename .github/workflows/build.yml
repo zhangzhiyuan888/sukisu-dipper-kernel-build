@@ -315,7 +315,7 @@ jobs:
           # --- 2. uapi/*.h (KSU/SukiSU 特有,来自上游,base64 嵌入) ---
           import base64 as _b64
           from pathlib import Path as _P
-          _uapi_dir = _P("drivers/kernelsu/policy/uapi")
+          _uapi_dir = _P("drivers/kernelsu/uapi")
           _uapi_dir.mkdir(parents=True, exist_ok=True)
           _uapi_files = {
               "app_profile.h": (
@@ -495,7 +495,7 @@ jobs:
           for _fn, _b64s in _uapi_files.items():
               _path = _uapi_dir / _fn
               _path.write_bytes(_b64.b64decode(_b64s))
-              print(f"created drivers/kernelsu/policy/uapi/{_fn}")
+              print(f"created drivers/kernelsu/uapi/{_fn}")
           PY
 
       - name: Check out pinned AnyKernel3
