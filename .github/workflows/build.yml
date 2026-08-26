@@ -133,11 +133,19 @@ jobs:
               print("No Kconfig $(shell,...) patterns needed fixing")
           PY
 
-          # zip 解压丢失 Unix 文件权限,给所有 shell/perl 脚本加执行位
+          # zip 解压丢失 Unix 文件权限,给所有脚本加执行位
           # 否则 Kconfig 解析器调 gcc-version.sh/clang-version.sh/gcc-plugin.sh 时 Permission denied
-          find scripts/ -type f \( -name "*.sh" -o -name "*.pl" \) -exec chmod +x {} \;
-          chmod +x scripts/gcc-version.sh scripts/clang-version.sh scripts/gcc-plugin.sh 2>/dev/null || true
-          echo "chmod +x scripts/*.sh and *.pl done"
+          # 同时 scripts/config (无后缀的 Python 脚本) 也要 chmod +x
+          find scripts/ -type f \( -name "*.py" -o -name "*.sh" -o -name "*.pl" \) -exec chmod +x {} \;
+          # 无后缀但有 shebang 的脚本
+          for f in scripts/config scripts/checkpatch.pl scripts/gcc-wrapper.py scripts/clang-wrapper.py; do
+            if [ -f "$f" ] && ! head -c 2 "$f" | grep -q '#!'; then
+              # 没有 shebang 不处理
+              :
+            fi
+            [ -f "$f" ] && chmod +x "$f"
+          done
+          echo "chmod +x scripts/*.py and *.sh and *.pl done"
 
       - name: Check out pinned AnyKernel3
         uses: actions/checkout@v4
@@ -189,55 +197,56 @@ jobs:
           clang/bin/clang --version
 
       - name: Convert kernel Python 2 scripts to Python 3 (2to3)
-        working-directory: kernel/scripts
+        working-directory: kernel
         run: |
-          # 装 2to3(ubuntu 自带 python3 但不一定有 2to3)
+          # 装 2to3
           if ! command -v 2to3 &>/dev/null; then
             echo "Installing python3-lib2to3..."
-            sudo apt-get install -y python3-lib2to3 || sudo pip3 install 2to3
+            sudo apt-get install -y python3-lib2to3 2>&1 | tail -3 || true
           fi
-          # 找出所有有 Python 2 print 语法的 .py 文件
+          # 用 Python subprocess 直接调 2to3,不用 xargs(更可靠)
           python3 - <<'PY'
-          import re
+          import subprocess, shutil, re
           from pathlib import Path
-          targets = []
-          for p in Path(".").rglob("*.py"):
+
+          # 找 2to3 命令
+          to3_path = shutil.which("2to3")
+          if to3_path:
+              cmd = [to3_path, "-w", "-n"]
+          else:
+              cmd = ["python3", "-m", "lib2to3", "-w", "-n"]
+
+          print(f"Using converter: {' '.join(cmd)}")
+
+          fixed = 0
+          for p in Path("scripts").rglob("*.py"):
               try:
                   src = p.read_text(encoding="utf-8", errors="ignore")
               except Exception:
                   continue
-              # 检测 print 后不是 ( 的旧式语法
-              if re.search(r'^\s*print\s+[^(\n]', src, re.MULTILINE):
-                  targets.append(p)
-          print(f"Found {len(targets)} .py files with Python 2 print:")
-          for t in targets:
-              print(f"  {t}")
-          # 写到一个临时文件列表,给 2to3 用
-          with open("/tmp/py2_targets.txt", "w") as f:
-              for t in targets:
-                  f.write(str(t) + "\n")
-          PY
-          # 2to3 转换这些文件 (-w: 写回 -n: 不要备份)
-          if [ -s /tmp/py2_targets.txt ]; then
-            xargs 2to3 -w -n < /tmp/py2_targets.txt 2>&1 | tail -30 || true
-            echo "2to3 conversion done"
-            # 二次验证没有残留
-            remaining=$(python3 -c "
-          import re
-          from pathlib import Path
-          count = 0
-          for t in [Path(l.strip()) for l in open('/tmp/py2_targets.txt')]:
+              # 只处理含 Python 2 print 语法的
+              if re.search(r"^\s*print\s+[^(\n]", src, re.MULTILINE):
+                  r = subprocess.run(cmd + [str(p)], capture_output=True, text=True)
+                  if r.returncode == 0:
+                      fixed += 1
+                      print(f"  converted {p}")
+                  else:
+                      print(f"  FAILED {p}: {r.stderr[:200]}")
+
+          print(f"Total converted: {fixed}")
+
+          # 二次扫描,确认还有残留
+          remaining = 0
+          for p in Path("scripts").rglob("*.py"):
               try:
-                  src = t.read_text()
-                  if re.search(r'^\s*print\s+[^(\n]', src, re.MULTILINE):
-                      count += 1
-              except: pass
-          print(count)
-          ")
-            echo "Remaining Python 2 print lines after 2to3: $remaining"
-          else
-            echo "No Python 2 print issues found, skip 2to3"
-          fi
+                  src = p.read_text(encoding="utf-8", errors="ignore")
+              except Exception:
+                  continue
+              if re.search(r"^\s*print\s+[^(\n]", src, re.MULTILINE):
+                  remaining += 1
+                  print(f"  STILL has Python 2 print: {p}")
+          print(f"Remaining Python 2 print: {remaining}")
+          PY
 
       - name: Configure munch kernel
         working-directory: kernel
