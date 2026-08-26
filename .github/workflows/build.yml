@@ -312,80 +312,169 @@ jobs:
           ns.write_text(src)
           print(f"namespace.c fixes applied: {fixed}")
 
-          # --- 2. uapi/app_profile.h (真实 UAPI 内容,来自 SukiSU-Ultra 上游) ---
-          uapi_dst = Path("drivers/kernelsu/policy/uapi/app_profile.h")
-          uapi_dst.parent.mkdir(parents=True, exist_ok=True)
-          uapi_lines = [
-              "#ifndef __KSU_UAPI_APP_PROFILE_H",
-              "#define __KSU_UAPI_APP_PROFILE_H",
-              "",
-              "#include <linux/types.h>",
-              "",
-              "#define KSU_APP_PROFILE_VER 4",
-              "#define KSU_MAX_PACKAGE_NAME 256",
-              "/* NGROUPS_MAX for Linux is 65535 generally, but we only supports 32 groups. */",
-              "#define KSU_MAX_GROUPS 32",
-              "#define KSU_SELINUX_DOMAIN 64",
-              "",
-              "#define FLAG_KSU_NO_NEW_PRIVS (1ULL << 0)",
-              "",
-              "struct root_profile {",
-              "    __s32 uid;",
-              "    __s32 gid;",
-              "",
-              "    __u32 groups_count;",
-              "    __s32 groups[KSU_MAX_GROUPS];",
-              "",
-              "    /* kernel_cap_t is u32[2] for capabilities v3 */",
-              "    struct {",
-              "        __u64 effective;",
-              "        __u64 permitted;",
-              "        __u64 inheritable;",
-              "    } capabilities;",
-              "",
-              "    char selinux_domain[KSU_SELINUX_DOMAIN];",
-              "",
-              "    __s32 namespaces;",
-              "",
-              "    __u64 flags;",
-              "};",
-              "",
-              "struct non_root_profile {",
-              "    bool umount_modules;",
-              "};",
-              "",
-              "struct app_profile {",
-              "    /*",
-              "     * It may be utilized for backward compatibility, although we have never",
-              "     * explicitly made any promises regarding this.",
-              "     */",
-              "    __u32 version;",
-              "",
-              "    /* this is usually the package of the app, but can be other value for special apps */",
-              "    char key[KSU_MAX_PACKAGE_NAME];",
-              "    __s32 curr_uid;",
-              "    bool allow_su;",
-              "",
-              "    union {",
-              "        struct {",
-              "            bool use_default;",
-              "            char template_name[KSU_MAX_PACKAGE_NAME];",
-              "",
-              "            struct root_profile profile;",
-              "        } rp_config;",
-              "",
-              "        struct {",
-              "            bool use_default;",
-              "",
-              "            struct non_root_profile profile;",
-              "        } nrp_config;",
-              "    };",
-              "};",
-              "",
-              "#endif",
-          ]
-          uapi_dst.write_text("\n".join(uapi_lines) + "\n")
-          print("created drivers/kernelsu/policy/uapi/app_profile.h (real UAPI)")
+          # --- 2. uapi/*.h (KSU/SukiSU 特有,来自上游,base64 嵌入) ---
+          import base64 as _b64
+          from pathlib import Path as _P
+          _uapi_dir = _P("drivers/kernelsu/policy/uapi")
+          _uapi_dir.mkdir(parents=True, exist_ok=True)
+          _uapi_files = {
+              "feature.h": (
+              "I2lmbmRlZiBfX0tTVV9VQVBJX0ZFQVRVUkVfSAojZGVmaW5lIF9fS1NVX1VBUElfRkVBVFVSRV9ICgplbnVtIGtzdV9mZWF0dXJl" +
+              "X2lkIHsKICAgIEtTVV9GRUFUVVJFX1NVX0NPTVBBVCA9IDAsCiAgICBLU1VfRkVBVFVSRV9LRVJORUxfVU1PVU5UID0gMSwKICAg" +
+              "IEtTVV9GRUFUVVJFX1NVTE9HID0gMiwKICAgIEtTVV9GRUFUVVJFX0FEQl9ST09UID0gMywKICAgIEtTVV9GRUFUVVJFX1NFTElO" +
+              "VVhfSElERSA9IDQsCiAgICBLU1VfRkVBVFVSRV9XRUJWSUVXX1pZR09URV9VTU9VTlQgPSA1LAoKICAgIEtTVV9GRUFUVVJFX01B" +
+              "WAp9OwoKI2VuZGlmCg=="
+              ),
+              "selinux.h": (
+              "I2lmbmRlZiBfX0tTVV9VQVBJX1NFTElOVVhfSAojZGVmaW5lIF9fS1NVX1VBUElfU0VMSU5VWF9ICgojaW5jbHVkZSA8bGludXgv" +
+              "dHlwZXMuaD4KCnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfU0VQT0xJQ1lfQ01EX05PUk1BTF9QRVJNID0gMTsKc3RhdGljIGNvbnN0" +
+              "IF9fdTMyIEtTVV9TRVBPTElDWV9DTURfWFBFUk0gPSAyOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX1NFUE9MSUNZX0NNRF9UWVBF" +
+              "X1NUQVRFID0gMzsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9TRVBPTElDWV9DTURfVFlQRSA9IDQ7CnN0YXRpYyBjb25zdCBfX3Uz" +
+              "MiBLU1VfU0VQT0xJQ1lfQ01EX1RZUEVfQVRUUiA9IDU7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfU0VQT0xJQ1lfQ01EX0FUVFIg" +
+              "PSA2OwpzdGF0aWMgY29uc3QgX191MzIgS1NVX1NFUE9MSUNZX0NNRF9UWVBFX1RSQU5TSVRJT04gPSA3OwpzdGF0aWMgY29uc3Qg" +
+              "X191MzIgS1NVX1NFUE9MSUNZX0NNRF9UWVBFX0NIQU5HRSA9IDg7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfU0VQT0xJQ1lfQ01E" +
+              "X0dFTkZTQ09OID0gOTsKCnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfU0VQT0xJQ1lfU1VCQ01EX05PUk1BTF9QRVJNX0FMTE9XID0g" +
+              "MTsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9TRVBPTElDWV9TVUJDTURfTk9STUFMX1BFUk1fREVOWSA9IDI7CnN0YXRpYyBjb25z" +
+              "dCBfX3UzMiBLU1VfU0VQT0xJQ1lfU1VCQ01EX05PUk1BTF9QRVJNX0FVRElUQUxMT1cgPSAzOwpzdGF0aWMgY29uc3QgX191MzIg" +
+              "S1NVX1NFUE9MSUNZX1NVQkNNRF9OT1JNQUxfUEVSTV9ET05UQVVESVQgPSA0OwoKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9TRVBP" +
+              "TElDWV9TVUJDTURfWFBFUk1fQUxMT1cgPSAxOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX1NFUE9MSUNZX1NVQkNNRF9YUEVSTV9B" +
+              "VURJVEFMTE9XID0gMjsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9TRVBPTElDWV9TVUJDTURfWFBFUk1fRE9OVEFVRElUID0gMzsK" +
+              "CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfU0VQT0xJQ1lfU1VCQ01EX1RZUEVfU1RBVEVfUEVSTUlTU0lWRSA9IDE7CnN0YXRpYyBj" +
+              "b25zdCBfX3UzMiBLU1VfU0VQT0xJQ1lfU1VCQ01EX1RZUEVfU1RBVEVfRU5GT1JDRSA9IDI7CgpzdGF0aWMgY29uc3QgX191MzIg" +
+              "S1NVX1NFUE9MSUNZX1NVQkNNRF9UWVBFX0NIQU5HRV9DSEFOR0UgPSAxOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX1NFUE9MSUNZ" +
+              "X1NVQkNNRF9UWVBFX0NIQU5HRV9NRU1CRVIgPSAyOwoKI2VuZGlmCg=="
+              ),
+              "sulog.h": (
+              "I2lmbmRlZiBfX0tTVV9VQVBJX1NVTE9HX0gKI2RlZmluZSBfX0tTVV9VQVBJX1NVTE9HX0gKCiNpbmNsdWRlIDxsaW51eC9zY2hl" +
+              "ZC5oPgojaW5jbHVkZSA8bGludXgvdHlwZXMuaD4KCiNkZWZpbmUgS1NVX1NVTE9HX0VWRU5UX1ZFUlNJT04gMQojaWZuZGVmIFRB" +
+              "U0tfQ09NTV9MRU4KI2RlZmluZSBUQVNLX0NPTU1fTEVOIDE2CiNlbmRpZgoKZW51bSBrc3Vfc3Vsb2dfZXZlbnRfdHlwZSB7CiAg" +
+              "ICBLU1VfU1VMT0dfRVZFTlRfUk9PVF9FWEVDVkUgPSAxLAogICAgS1NVX1NVTE9HX0VWRU5UX1NVQ09NUEFUID0gMiwKICAgIEtT" +
+              "VV9TVUxPR19FVkVOVF9JT0NUTF9HUkFOVF9ST09UID0gMywKfTsKCnN0cnVjdCBrc3Vfc3Vsb2dfZXZlbnQgewogICAgX191MTYg" +
+              "dmVyc2lvbjsKICAgIF9fdTE2IGV2ZW50X3R5cGU7CiAgICBfX3MzMiByZXR2YWw7CiAgICBfX3UzMiBwaWQ7CiAgICBfX3UzMiB0" +
+              "Z2lkOwogICAgX191MzIgcHBpZDsKICAgIF9fdTMyIHVpZDsKICAgIF9fdTMyIGV1aWQ7CiAgICBjaGFyIGNvbW1bVEFTS19DT01N" +
+              "X0xFTl07CiAgICBfX3UzMiBmaWxlbmFtZV9sZW47CiAgICBfX3UzMiBhcmd2X2xlbjsKfSBfX3BhY2tlZDsKCiNlbmRpZgo="
+              ),
+              "ksu.h": (
+              "I2lmbmRlZiBfX0tTVV9VQVBJX0tTVV9ICiNkZWZpbmUgX19LU1VfVUFQSV9LU1VfSAoKI2luY2x1ZGUgInVhcGkvc3VwZXJjYWxs" +
+              "LmgiCiNpbmNsdWRlICJ1YXBpL2FwcF9wcm9maWxlLmgiCiNpbmNsdWRlICJ1YXBpL2ZlYXR1cmUuaCIKI2luY2x1ZGUgInVhcGkv" +
+              "c2VsaW51eC5oIgojaW5jbHVkZSAidWFwaS9zdWxvZy5oIgoKI2VuZGlmIC8vIF9fS1NVX1VBUElfS1NVX0gK"
+              ),
+              "supercall.h": (
+              "I2lmbmRlZiBfX0tTVV9VQVBJX1NVUEVSQ0FMTF9ICiNkZWZpbmUgX19LU1VfVUFQSV9TVVBFUkNBTExfSAoKI2luY2x1ZGUgPGxp" +
+              "bnV4L2lvY3RsLmg+CiNpbmNsdWRlIDxsaW51eC90eXBlcy5oPgoKI2luY2x1ZGUgInVhcGkvYXBwX3Byb2ZpbGUuaCIKCi8vIDI6" +
+              "IGFsbG93bGlzdCB2NCByb290IHByb2ZpbGUgZmxhZ3MKc3RhdGljIGNvbnN0IF9fdTMyIEtFUk5FTF9TVV9VQVBJX1ZFUlNJT04g" +
+              "PSAyOwoKLyogTWFnaWMgbnVtYmVycyBmb3IgcmVib290IGhvb2sgdG8gaW5zdGFsbCBmZCAqLwpzdGF0aWMgY29uc3QgX191MzIg" +
+              "S1NVX0lOU1RBTExfTUFHSUMxID0gMHhERUFEQkVFRjsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JTlNUQUxMX01BR0lDMiA9IDB4" +
+              "Q0FGRUJBQkU7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfRlVMTF9WRVJTSU9OX1NUUklORyA9IDI1NTsKCnN0cnVjdCBrc3VfYmVj" +
+              "b21lX2RhZW1vbl9jbWQgewogICAgX191OCB0b2tlbls2NV07IC8qIElucHV0OiBkYWVtb24gdG9rZW4gKG51bGwtdGVybWluYXRl" +
+              "ZCkgKi8KfTsKCnN0YXRpYyBjb25zdCBfX3UzMiBFVkVOVF9QT1NUX0ZTX0RBVEEgPSAxOwpzdGF0aWMgY29uc3QgX191MzIgRVZF" +
+              "TlRfQk9PVF9DT01QTEVURUQgPSAyOwpzdGF0aWMgY29uc3QgX191MzIgRVZFTlRfTU9EVUxFX01PVU5URUQgPSAzOwoKc3RhdGlj" +
+              "IGNvbnN0IF9fdTMyIEtTVV9HRVRfSU5GT19GTEFHX0xLTSA9ICgxVSA8PCAwKTsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9HRVRf" +
+              "SU5GT19GTEFHX01BTkFHRVIgPSAoMVUgPDwgMSk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfR0VUX0lORk9fRkxBR19MQVRFX0xP" +
+              "QUQgPSAoMVUgPDwgMik7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfR0VUX0lORk9fRkxBR19QUl9CVUlMRCA9ICgxVSA8PCAzKTsK" +
+              "CnN0cnVjdCBrc3VfZ2V0X2luZm9fY21kIHsKICAgIF9fdTMyIHZlcnNpb247IC8qIE91dHB1dDogS0VSTkVMX1NVX1ZFUlNJT04g" +
+              "Ki8KICAgIF9fdTMyIGZsYWdzOyAvKiBPdXRwdXQ6IEtTVV9HRVRfSU5GT19GTEFHXyogYml0cyAqLwogICAgX191MzIgZmVhdHVy" +
+              "ZXM7IC8qIE91dHB1dDogbWF4IGZlYXR1cmUgSUQgc3VwcG9ydGVkICovCiAgICBfX3UzMiB1YXBpX3ZlcnNpb247IC8qIE91dHB1" +
+              "dDogS0VSTkVMX1NVX1VBUElfVkVSU0lPTiAqLwp9OwoKc3RydWN0IGtzdV9nZXRfaW5mb19sZWdhY3lfY21kIHsKICAgIF9fdTMy" +
+              "IHZlcnNpb247IC8qIE91dHB1dDogS0VSTkVMX1NVX1ZFUlNJT04gKi8KICAgIF9fdTMyIGZsYWdzOyAvKiBPdXRwdXQ6IEtTVV9H" +
+              "RVRfSU5GT19GTEFHXyogYml0cyAqLwogICAgX191MzIgZmVhdHVyZXM7IC8qIE91dHB1dDogbWF4IGZlYXR1cmUgSUQgc3VwcG9y" +
+              "dGVkICovCn07CgpzdHJ1Y3Qga3N1X3JlcG9ydF9ldmVudF9jbWQgewogICAgX191MzIgZXZlbnQ7IC8qIElucHV0OiBFVkVOVF9Q" +
+              "T1NUX0ZTX0RBVEEsIEVWRU5UX0JPT1RfQ09NUExFVEVELCBldGMuICovCn07CgpzdHJ1Y3Qga3N1X3NldF9zZXBvbGljeV9jbWQg" +
+              "ewogICAgX191NjQgZGF0YV9sZW47IC8qIElucHV0OiBieXRlcyBvZiBzZXJpYWxpemVkIGNvbW1hbmQgcGF5bG9hZCAqLwogICAg" +
+              "X19hbGlnbmVkX3U2NCBkYXRhOyAvKiBJbnB1dDogcG9pbnRlciB0byBzZXJpYWxpemVkIHBheWxvYWQgKi8KfTsKCnN0cnVjdCBr" +
+              "c3Vfc2Vwb2xpY3lfY21kX2hkciB7CiAgICBfX3UzMiBjbWQ7IC8qIElucHV0OiBjb21tYW5kIHR5cGUsIENNRF8qICovCiAgICBf" +
+              "X3UzMiBzdWJjbWQ7IC8qIElucHV0OiBjb21tYW5kIHN1YnR5cGUgKi8KfTsKCnN0cnVjdCBrc3VfY2hlY2tfc2FmZW1vZGVfY21k" +
+              "IHsKICAgIF9fdTggaW5fc2FmZV9tb2RlOyAvKiBPdXRwdXQ6IHRydWUgaWYgaW4gc2FmZSBtb2RlLCBmYWxzZSBvdGhlcndpc2Ug" +
+              "Ki8KfTsKCi8qIGRlcHJlY2F0ZWQgKi8Kc3RydWN0IGtzdV9nZXRfYWxsb3dfbGlzdF9jbWQgewogICAgX191MzIgdWlkc1sxMjhd" +
+              "OyAvKiBPdXRwdXQ6IGFycmF5IG9mIGFsbG93ZWQvZGVuaWVkIFVJRHMgKi8KICAgIF9fdTMyIGNvdW50OyAvKiBPdXRwdXQ6IG51" +
+              "bWJlciBvZiBVSURzIGluIGFycmF5ICovCiAgICBfX3U4IGFsbG93OyAvKiBJbnB1dDogdHJ1ZSBmb3IgYWxsb3cgbGlzdCwgZmFs" +
+              "c2UgZm9yIGRlbnkgbGlzdCAqLwp9OwoKc3RydWN0IGtzdV9uZXdfZ2V0X2FsbG93X2xpc3RfY21kIHsKICAgIF9fdTE2IGNvdW50" +
+              "OyAvKiBJbnB1dCAvIE91dHB1dDogbnVtYmVyIG9mIFVJRHMgaW4gYXJyYXkgKi8KICAgIF9fdTE2IHRvdGFsX2NvdW50OyAvKiBP" +
+              "dXRwdXQ6IHRvdGFsIG51bWJlciBvZiBVSURzIGluIHJlcXVlc3RlZCBsaXN0ICovCiAgICBfX3UzMiB1aWRzWzBdOyAvKiBPdXRw" +
+              "dXQ6IGFycmF5IG9mIGFsbG93ZWQvZGVuaWVkIFVJRHMgKi8KfTsKCnN0cnVjdCBrc3VfdWlkX2dyYW50ZWRfcm9vdF9jbWQgewog" +
+              "ICAgX191MzIgdWlkOyAvKiBJbnB1dDogdGFyZ2V0IFVJRCB0byBjaGVjayAqLwogICAgX191OCBncmFudGVkOyAvKiBPdXRwdXQ6" +
+              "IHRydWUgaWYgZ3JhbnRlZCwgZmFsc2Ugb3RoZXJ3aXNlICovCn07CgpzdHJ1Y3Qga3N1X3VpZF9zaG91bGRfdW1vdW50X2NtZCB7" +
+              "CiAgICBfX3UzMiB1aWQ7IC8qIElucHV0OiB0YXJnZXQgVUlEIHRvIGNoZWNrICovCiAgICBfX3U4IHNob3VsZF91bW91bnQ7IC8q" +
+              "IE91dHB1dDogdHJ1ZSBpZiBzaG91bGQgdW1vdW50LCBmYWxzZSBvdGhlcndpc2UgKi8KfTsKCnN0cnVjdCBrc3VfZ2V0X21hbmFn" +
+              "ZXJfYXBwaWRfY21kIHsKICAgIF9fdTMyIGFwcGlkOyAvKiBPdXRwdXQ6IG1hbmFnZXIgYXBwIGlkICovCn07CgpzdHJ1Y3Qga3N1" +
+              "X2dldF9hcHBfcHJvZmlsZV9jbWQgewogICAgc3RydWN0IGFwcF9wcm9maWxlIHByb2ZpbGU7IC8qIElucHV0L091dHB1dDogYXBw" +
+              "IHByb2ZpbGUgc3RydWN0dXJlICovCn07CgpzdHJ1Y3Qga3N1X3NldF9hcHBfcHJvZmlsZV9jbWQgewogICAgc3RydWN0IGFwcF9w" +
+              "cm9maWxlIHByb2ZpbGU7IC8qIElucHV0OiBhcHAgcHJvZmlsZSBzdHJ1Y3R1cmUgKi8KfTsKCnN0cnVjdCBrc3VfZ2V0X2ZlYXR1" +
+              "cmVfY21kIHsKICAgIF9fdTMyIGZlYXR1cmVfaWQ7IC8qIElucHV0OiBmZWF0dXJlIElEIChlbnVtIGtzdV9mZWF0dXJlX2lkKSAq" +
+              "LwogICAgX191NjQgdmFsdWU7IC8qIE91dHB1dDogZmVhdHVyZSB2YWx1ZS9zdGF0ZSAqLwogICAgX191OCBzdXBwb3J0ZWQ7IC8q" +
+              "IE91dHB1dDogdHJ1ZSBpZiBmZWF0dXJlIGlzIHN1cHBvcnRlZCwgZmFsc2Ugb3RoZXJ3aXNlICovCn07CgpzdHJ1Y3Qga3N1X3Nl" +
+              "dF9mZWF0dXJlX2NtZCB7CiAgICBfX3UzMiBmZWF0dXJlX2lkOyAvKiBJbnB1dDogZmVhdHVyZSBJRCAoZW51bSBrc3VfZmVhdHVy" +
+              "ZV9pZCkgKi8KICAgIF9fdTY0IHZhbHVlOyAvKiBJbnB1dDogZmVhdHVyZSB2YWx1ZS9zdGF0ZSB0byBzZXQgKi8KfTsKCnN0cnVj" +
+              "dCBrc3VfZ2V0X3dyYXBwZXJfZmRfY21kIHsKICAgIF9fdTMyIGZkOyAvKiBJbnB1dDogdXNlcnNwYWNlIGZkICovCiAgICBfX3Uz" +
+              "MiBmbGFnczsgLyogSW5wdXQ6IGZsYWdzIG9mIHVzZXJzcGFjZSBmZCAqLwp9OwoKc3RydWN0IGtzdV9tYW5hZ2VfbWFya19jbWQg" +
+              "ewogICAgX191MzIgb3BlcmF0aW9uOyAvKiBJbnB1dDogS1NVX01BUktfKiAqLwogICAgX19zMzIgcGlkOyAvKiBJbnB1dDogdGFy" +
+              "Z2V0IHBpZCAoMCBmb3IgYWxsIHByb2Nlc3NlcykgKi8KICAgIF9fdTMyIHJlc3VsdDsgLyogT3V0cHV0OiBmb3IgZ2V0IG9wZXJh" +
+              "dGlvbiAtIG1hcmsgc3RhdHVzIG9yIHJlZ19jb3VudCAqLwp9OwoKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9NQVJLX0dFVCA9IDE7" +
+              "CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfTUFSS19NQVJLID0gMjsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9NQVJLX1VOTUFSSyA9" +
+              "IDM7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfTUFSS19SRUZSRVNIID0gNDsKCnN0cnVjdCBrc3VfbnVrZV9leHQ0X3N5c2ZzX2Nt" +
+              "ZCB7CiAgICBfX2FsaWduZWRfdTY0IGFyZzsgLyogSW5wdXQ6IG1udCBwb2ludGVyICovCn07CgpzdHJ1Y3Qga3N1X2FkZF90cnlf" +
+              "dW1vdW50X2NtZCB7CiAgICBfX2FsaWduZWRfdTY0IGFyZzsgLyogY2hhciBwdHIsIHRoaXMgaXMgdGhlIG1vdW50cG9pbnQgKi8K" +
+              "ICAgIF9fdTMyIGZsYWdzOyAvKiB0aGlzIGlzIHRoZSBmbGFnIHdlIHVzZSBmb3IgaXQgKi8KICAgIF9fdTggbW9kZTsgLyogZGVu" +
+              "b3RlcyB3aGF0IHRvIGRvIHdpdGggaXQgMDp3aXBlX2xpc3QgMTphZGRfdG9fbGlzdCAyOmRlbGV0ZV9lbnRyeSAqLwp9OwoKc3Ry" +
+              "dWN0IGtzdV9nZXRfc3Vsb2dfZmRfY21kIHsKICAgIF9fdTMyIGZsYWdzOyAvKiBJbnB1dDogcmVzZXJ2ZWQgZm9yIGZ1dHVyZSB1" +
+              "c2UsIG11c3QgYmUgMCAqLwp9OwoKc3RydWN0IGtzdV9zZXRfc3Bvb2ZfdmVyc2lvbl9jbWQgewogICAgX191OCByZWxlYXNlWzY1" +
+              "XTsgLyogSW5wdXQ6IGUuZy4sICI1LjEwLjExNS1hbmRyb2lkMTItOS1nMDAwMDAwMDAiICovCiAgICBfX3U4IHZlcnNpb25bNjVd" +
+              "OyAvKiBJbnB1dDogZS5nLiwgIiMxIFNNUCBQUkVFTVBUIFRodSBKYW4gMSAwMDowMDowMCBVVEMgMjAyNiIgKi8KfTsKCi8vIExp" +
+              "c3QgY3VycmVudCB1bW91bnQgZW50cmllcwpzdHJ1Y3Qga3N1X2xpc3RfdHJ5X3Vtb3VudF9jbWQgewogICAgX19hbGlnbmVkX3U2" +
+              "NCBhcmc7IC8vIFVzZXIgYnVmZmVyCiAgICBfX3UzMiBidWZfc2l6ZTsgLy8gQnVmZmVyIHNpemUgcHJvdmlkZWQgYnkgdXNlcnNw" +
+              "YWNlCn07CgpzdGF0aWMgY29uc3QgX191OCBLU1VfVU1PVU5UX1dJUEUgPSAwOyAvKiBpZ25vcmUgZXZlcnl0aGluZyBhbmQgd2lw" +
+              "ZSBsaXN0ICovCnN0YXRpYyBjb25zdCBfX3U4IEtTVV9VTU9VTlRfQUREID0gMTsgLyogYWRkIGVudHJ5IChwYXRoICsgZmxhZ3Mp" +
+              "ICovCnN0YXRpYyBjb25zdCBfX3U4IEtTVV9VTU9VTlRfREVMID0gMjsgLyogZGVsZXRlIGVudHJ5LCBzdHJjbXAgKi8KCi8vIE90" +
+              "aGVyIGNvbW1hbmQgc3RydWN0dXJlcwpzdHJ1Y3Qga3N1X2dldF9mdWxsX3ZlcnNpb25fY21kIHsKICAgIGNoYXIgdmVyc2lvbl9m" +
+              "dWxsWzI1NV07IC8vIE91dHB1dDogZnVsbCB2ZXJzaW9uIHN0cmluZwp9OwoKc3RydWN0IGtzdV9ob29rX3R5cGVfY21kIHsKICAg" +
+              "IGNoYXIgaG9va190eXBlWzMyXTsgLy8gT3V0cHV0OiBob29rIHR5cGUgc3RyaW5nCn07CgpzdHJ1Y3Qga3N1X2VuYWJsZV9rcG1f" +
+              "Y21kIHsKICAgIF9fdTggZW5hYmxlZDsgLy8gT3V0cHV0OiB0cnVlIGlmIEtQTSBpcyBlbmFibGVkCn07CgpzdGF0aWMgY29uc3Qg" +
+              "X191MzIgU1VLSVNVX0tQTV9MT0FEID0gMTsKc3RhdGljIGNvbnN0IF9fdTMyIFNVS0lTVV9LUE1fVU5MT0FEID0gMjsKc3RhdGlj" +
+              "IGNvbnN0IF9fdTMyIFNVS0lTVV9LUE1fTlVNID0gMzsKc3RhdGljIGNvbnN0IF9fdTMyIFNVS0lTVV9LUE1fTElTVCA9IDQ7CnN0" +
+              "YXRpYyBjb25zdCBfX3UzMiBTVUtJU1VfS1BNX0lORk8gPSA1OwpzdGF0aWMgY29uc3QgX191MzIgU1VLSVNVX0tQTV9DT05UUk9M" +
+              "ID0gNjsKc3RhdGljIGNvbnN0IF9fdTMyIFNVS0lTVV9LUE1fVkVSU0lPTiA9IDc7CgpzdHJ1Y3Qga3N1X2twbV9jbWQgewogICAg" +
+              "X19hbGlnbmVkX3U2NCBfX3VzZXIgY29udHJvbF9jb2RlOwogICAgX19hbGlnbmVkX3U2NCBfX3VzZXIgYXJnMTsKICAgIF9fYWxp" +
+              "Z25lZF91NjQgX191c2VyIGFyZzI7CiAgICBfX2FsaWduZWRfdTY0IF9fdXNlciByZXN1bHRfY29kZTsKfTsKCi8qIElPQ1RMIGNv" +
+              "bW1hbmQgZGVmaW5pdGlvbnMgKi8Kc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JT0NUTF9HUkFOVF9ST09UID0gX0lPQyhfSU9DX05P" +
+              "TkUsICdLJywgMSwgMCk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExfR0VUX0lORk8gPSBfSU9SKCdLJywgMiwgc3RydWN0" +
+              "IGtzdV9nZXRfaW5mb19jbWQpOwovKiBkZXByZWNhdGVkICovCnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExfR0VUX0lORk9f" +
+              "TEVHQUNZID0gX0lPQyhfSU9DX1JFQUQsICdLJywgMiwgMCk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExfUkVQT1JUX0VW" +
+              "RU5UID0gX0lPQyhfSU9DX1dSSVRFLCAnSycsIDMsIDApOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX1NFVF9TRVBPTElD" +
+              "WSA9IF9JT0MoX0lPQ19SRUFEIHwgX0lPQ19XUklURSwgJ0snLCA0LCAwKTsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JT0NUTF9D" +
+              "SEVDS19TQUZFTU9ERSA9IF9JT0MoX0lPQ19SRUFELCAnSycsIDUsIDApOwovKiBkZXByZWNhdGVkICovCnN0YXRpYyBjb25zdCBf" +
+              "X3UzMiBLU1VfSU9DVExfR0VUX0FMTE9XX0xJU1QgPSBfSU9DKF9JT0NfUkVBRCB8IF9JT0NfV1JJVEUsICdLJywgNiwgMCk7Ci8q" +
+              "IGRlcHJlY2F0ZWQgKi8Kc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JT0NUTF9HRVRfREVOWV9MSVNUID0gX0lPQyhfSU9DX1JFQUQg" +
+              "fCBfSU9DX1dSSVRFLCAnSycsIDcsIDApOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX05FV19HRVRfQUxMT1dfTElTVCA9" +
+              "IF9JT1dSKCdLJywgNiwgc3RydWN0IGtzdV9uZXdfZ2V0X2FsbG93X2xpc3RfY21kKTsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9J" +
+              "T0NUTF9ORVdfR0VUX0RFTllfTElTVCA9IF9JT1dSKCdLJywgNywgc3RydWN0IGtzdV9uZXdfZ2V0X2FsbG93X2xpc3RfY21kKTsK" +
+              "c3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JT0NUTF9VSURfR1JBTlRFRF9ST09UID0gX0lPQyhfSU9DX1JFQUQgfCBfSU9DX1dSSVRF" +
+              "LCAnSycsIDgsIDApOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX1VJRF9TSE9VTERfVU1PVU5UID0gX0lPQyhfSU9DX1JF" +
+              "QUQgfCBfSU9DX1dSSVRFLCAnSycsIDksIDApOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX0dFVF9NQU5BR0VSX0FQUElE" +
+              "ID0gX0lPQyhfSU9DX1JFQUQsICdLJywgMTAsIDApOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX0dFVF9BUFBfUFJPRklM" +
+              "RSA9IF9JT0MoX0lPQ19SRUFEIHwgX0lPQ19XUklURSwgJ0snLCAxMSwgMCk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExf" +
+              "U0VUX0FQUF9QUk9GSUxFID0gX0lPQyhfSU9DX1dSSVRFLCAnSycsIDEyLCAwKTsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JT0NU" +
+              "TF9HRVRfRkVBVFVSRSA9IF9JT0MoX0lPQ19SRUFEIHwgX0lPQ19XUklURSwgJ0snLCAxMywgMCk7CnN0YXRpYyBjb25zdCBfX3Uz" +
+              "MiBLU1VfSU9DVExfU0VUX0ZFQVRVUkUgPSBfSU9DKF9JT0NfV1JJVEUsICdLJywgMTQsIDApOwpzdGF0aWMgY29uc3QgX191MzIg" +
+              "S1NVX0lPQ1RMX0dFVF9XUkFQUEVSX0ZEID0gX0lPQyhfSU9DX1dSSVRFLCAnSycsIDE1LCAwKTsKc3RhdGljIGNvbnN0IF9fdTMy" +
+              "IEtTVV9JT0NUTF9NQU5BR0VfTUFSSyA9IF9JT0MoX0lPQ19SRUFEIHwgX0lPQ19XUklURSwgJ0snLCAxNiwgMCk7CnN0YXRpYyBj" +
+              "b25zdCBfX3UzMiBLU1VfSU9DVExfTlVLRV9FWFQ0X1NZU0ZTID0gX0lPQyhfSU9DX1dSSVRFLCAnSycsIDE3LCAwKTsKc3RhdGlj" +
+              "IGNvbnN0IF9fdTMyIEtTVV9JT0NUTF9BRERfVFJZX1VNT1VOVCA9IF9JT0MoX0lPQ19XUklURSwgJ0snLCAxOCwgMCk7CnN0YXRp" +
+              "YyBjb25zdCBfX3UzMiBLU1VfSU9DVExfU0VUX0lOSVRfUEdSUCA9IF9JTygnSycsIDE5KTsKc3RhdGljIGNvbnN0IF9fdTMyIEtT" +
+              "VV9JT0NUTF9HRVRfU1VMT0dfRkQgPSBfSU9XKCdLJywgMjAsIHN0cnVjdCBrc3VfZ2V0X3N1bG9nX2ZkX2NtZCk7CnN0YXRpYyBj" +
+              "b25zdCBfX3UzMiBLU1VfSU9DVExfRElTQUJMRV9FU0NBUEVfVE9fUk9PVCA9IF9JTygnSycsIDIxKTsKLy8gT3RoZXIgSU9DVEwg" +
+              "Y29tbWFuZCBkZWZpbml0aW9ucwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX0dFVF9GVUxMX1ZFUlNJT04gPSBfSU9DKF9J" +
+              "T0NfUkVBRCwgJ0snLCAxMDAsIDApOwpzdGF0aWMgY29uc3QgX191MzIgS1NVX0lPQ1RMX0hPT0tfVFlQRSA9IF9JT0MoX0lPQ19S" +
+              "RUFELCAnSycsIDEwMSwgMCk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExfRU5BQkxFX0tQTSA9IF9JT0MoX0lPQ19SRUFE" +
+              "LCAnSycsIDEwMiwgMCk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExfTElTVF9UUllfVU1PVU5UID0gX0lPQyhfSU9DX1JF" +
+              "QUQgfCBfSU9DX1dSSVRFLCAnSycsIDEwMywgMCk7CnN0YXRpYyBjb25zdCBfX3UzMiBLU1VfSU9DVExfU0VUX1NQT09GX1ZFUlNJ" +
+              "T04gPSBfSU9DKF9JT0NfV1JJVEUsICdLJywgMTA0LCAwKTsKc3RhdGljIGNvbnN0IF9fdTMyIEtTVV9JT0NUTF9LUE0gPSBfSU9D" +
+              "KF9JT0NfUkVBRCB8IF9JT0NfV1JJVEUsICdLJywgMjAwLCAwKTsKCiNlbmRpZgo="
+              ),
+          }
+          for _fn, _b64s in _uapi_files.items():
+              _path = _uapi_dir / _fn
+              _path.write_bytes(_b64.b64decode(_b64s))
+              print(f"created drivers/kernelsu/policy/uapi/{_fn}")
           PY
 
       - name: Check out pinned AnyKernel3
