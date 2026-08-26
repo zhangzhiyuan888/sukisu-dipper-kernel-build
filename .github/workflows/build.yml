@@ -203,6 +203,55 @@ jobs:
           chmod +x scripts/gcc-version.sh
           echo "gcc-version.sh patched (clang-compatible stub)"
 
+      - name: Patch sched.h extern-inline + add SusFS task fields
+        working-directory: kernel
+        run: |
+          # 两个问题:
+          # 1. GCC14: sched.h 里 extern inline is_top_app 等(声明) 定义在 core.c,
+          #    但 4.19 的 inline 宏 = always_inline,其他文件调用时 body not available
+          #    修复: extern inline -> extern (去掉 always_inline,外部链接 core.c 符号)
+          # 2. 预集成包 sched.h 漏了 SusFS 字段 susfs_task_state(本地集成遗漏)
+          #    修复: 在 randomized_struct_fields_end 前插入 u64 字段
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          sched = Path("include/linux/sched.h")
+          src = sched.read_text()
+
+          # 1. extern inline -> extern (解决 always_inline body not available)
+          new_src = re.sub(r"extern inline\s+", "extern ", src)
+          if new_src != src:
+              print("sched.h: extern inline -> extern (fixed always_inline for GCC14)")
+              src = new_src
+          else:
+              print("sched.h: no extern inline found (maybe already patched)")
+
+          # 2. 加 SusFS 字段
+          if "susfs_task_state" not in src:
+              anchor = "\trandomized_struct_fields_end\n"
+              inject = (
+                  "#if defined(CONFIG_KSU_SUSFS)\n"
+                  "\tu64 susfs_task_state;\n"
+                  "\tu64 susfs_last_fake_mnt_id;\n"
+                  "#endif\n"
+                  "\trandomized_struct_fields_end\n"
+              )
+              if anchor in src:
+                  src = src.replace(anchor, inject, 1)
+                  print("sched.h: added susfs_task_state + susfs_last_fake_mnt_id fields")
+              else:
+                  print("sched.h: WARNING randomized_struct_fields_end anchor not found")
+          else:
+              print("sched.h: susfs_task_state already present")
+
+          sched.write_text(src)
+          # 验证
+          check = sched.read_text()
+          print("  susfs_task_state in sched.h:", "susfs_task_state" in check)
+          print("  extern inline remaining:", len(re.findall(r"extern inline", check)))
+          PY
+
       - name: Check out pinned AnyKernel3
         uses: actions/checkout@v4
         with:
