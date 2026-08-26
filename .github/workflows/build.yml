@@ -350,7 +350,10 @@ jobs:
             | sed 's|^\.|out|' | xargs mkdir -p
           echo "mirrored $(find . -type d -not -path './out/*' -not -path './.git*' | wc -l) source dirs to out/"
           # 用 GCC 交叉编译(小米官方方式),clang 编译 4.19 有 vdso/aes-modes 兼容问题
-          make -j"$(nproc)" O=out KSU_VERSION=${{ env.KSU_VERSION }} Image.gz-dtb
+          # KCFLAGS=-w: GCC 14 默认把 implicit-int/implicit-function-declaration 当 error,
+          # 4.19 老代码在 GCC 14 下编译不过,禁用所有警告(真错误仍会报)
+          make -j"$(nproc)" O=out KSU_VERSION=${{ env.KSU_VERSION }} \
+            KCFLAGS="-w" Image.gz-dtb
 
       - name: Verify compiled kernel
         working-directory: kernel
