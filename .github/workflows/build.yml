@@ -295,33 +295,97 @@ jobs:
               fixed += 1
               print("namespace.c: fixed alloc_vfsmnt in clone_mnt")
 
-          # is_current_zygote_domain: 在 CONFIG_KSU_SUSFS_SUS_MOUNT 块内插入 bool 定义
-          old3 = "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n\t// If caller process is zygote"
+          # is_current_zygote_domain: 在注释行前插入 bool 定义
+          # 注意: 用单行匹配(namespace.c 是 CRLF,含 \\n 的多行匹配会失败)
+          old3 = "\t// If caller process is zygote and not doing unshare, so we just reorder the mnt_id"
           new3 = (
-              "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n"
               "\tbool is_current_zygote_domain = susfs_is_current_zygote_domain();\n"
-              "\t// If caller process is zygote"
+              "\t// If caller process is zygote and not doing unshare, so we just reorder the mnt_id"
           )
           if old3 in src:
               src = src.replace(old3, new3, 1)
               fixed += 1
               print("namespace.c: added is_current_zygote_domain bool")
+          else:
+              print("namespace.c: WARNING zygote anchor not found")
 
           ns.write_text(src)
           print(f"namespace.c fixes applied: {fixed}")
 
-          # --- 2. uapi/app_profile.h ---
-          profile_src = Path("drivers/kernelsu/policy/app_profile.h")
+          # --- 2. uapi/app_profile.h (真实 UAPI 内容,来自 SukiSU-Ultra 上游) ---
           uapi_dst = Path("drivers/kernelsu/policy/uapi/app_profile.h")
-          if profile_src.exists():
-              uapi_dst.parent.mkdir(parents=True, exist_ok=True)
-              if not uapi_dst.exists():
-                  uapi_dst.write_text(profile_src.read_text())
-                  print("created drivers/kernelsu/policy/uapi/app_profile.h")
-              else:
-                  print("uapi/app_profile.h already exists")
-          else:
-              print("WARNING: app_profile.h source not found")
+          uapi_dst.parent.mkdir(parents=True, exist_ok=True)
+          uapi_lines = [
+              "#ifndef __KSU_UAPI_APP_PROFILE_H",
+              "#define __KSU_UAPI_APP_PROFILE_H",
+              "",
+              "#include <linux/types.h>",
+              "",
+              "#define KSU_APP_PROFILE_VER 4",
+              "#define KSU_MAX_PACKAGE_NAME 256",
+              "/* NGROUPS_MAX for Linux is 65535 generally, but we only supports 32 groups. */",
+              "#define KSU_MAX_GROUPS 32",
+              "#define KSU_SELINUX_DOMAIN 64",
+              "",
+              "#define FLAG_KSU_NO_NEW_PRIVS (1ULL << 0)",
+              "",
+              "struct root_profile {",
+              "    __s32 uid;",
+              "    __s32 gid;",
+              "",
+              "    __u32 groups_count;",
+              "    __s32 groups[KSU_MAX_GROUPS];",
+              "",
+              "    /* kernel_cap_t is u32[2] for capabilities v3 */",
+              "    struct {",
+              "        __u64 effective;",
+              "        __u64 permitted;",
+              "        __u64 inheritable;",
+              "    } capabilities;",
+              "",
+              "    char selinux_domain[KSU_SELINUX_DOMAIN];",
+              "",
+              "    __s32 namespaces;",
+              "",
+              "    __u64 flags;",
+              "};",
+              "",
+              "struct non_root_profile {",
+              "    bool umount_modules;",
+              "};",
+              "",
+              "struct app_profile {",
+              "    /*",
+              "     * It may be utilized for backward compatibility, although we have never",
+              "     * explicitly made any promises regarding this.",
+              "     */",
+              "    __u32 version;",
+              "",
+              "    /* this is usually the package of the app, but can be other value for special apps */",
+              "    char key[KSU_MAX_PACKAGE_NAME];",
+              "    __s32 curr_uid;",
+              "    bool allow_su;",
+              "",
+              "    union {",
+              "        struct {",
+              "            bool use_default;",
+              "            char template_name[KSU_MAX_PACKAGE_NAME];",
+              "",
+              "            struct root_profile profile;",
+              "        } rp_config;",
+              "",
+              "        struct {",
+              "            bool use_default;",
+              "",
+              "            struct non_root_profile profile;",
+              "        } nrp_config;",
+              "    };",
+              "};",
+              "",
+              "#endif",
+          ]
+          uapi_dst.write_text("\n".join(uapi_lines) + "\n")
+          print("created drivers/kernelsu/policy/uapi/app_profile.h (real UAPI)")
           PY
 
       - name: Check out pinned AnyKernel3
