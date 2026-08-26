@@ -74,6 +74,67 @@ jobs:
           test "$(git -C susfs-419-base rev-parse HEAD)" = "$SUSFS_419_BASE_COMMIT"
           test "$(git -C ak3 rev-parse HEAD)" = "$ANYKERNEL_COMMIT"
 
+      - name: Fix munch-s-oss Python 2 wrappers + init/Kconfig syntax
+        working-directory: kernel
+        run: |
+          # 修复 scripts/gcc-wrapper.py 的 Python 2 print 语法(Python 3 环境会崩)
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          wrapper = Path("scripts/gcc-wrapper.py")
+          if wrapper.exists():
+              src = wrapper.read_text()
+              original = src
+              # 把 Python 2 风格的 print "x", expr 改成 print("x", expr)
+              # 匹配 print "literal", m.group(N) 这种
+              new_src, n1 = re.subn(
+                  r'print ("[^"]*"), (m\.group\([^)]+\))',
+                  r'print(\1, \2)',
+                  src,
+              )
+              # 也匹配 print("x" ...) 这种已经正确的(防误伤)
+              if n1 > 0:
+                  wrapper.write_text(new_src)
+                  print(f"Fixed {n1} Python 2 print statements in scripts/gcc-wrapper.py")
+              else:
+                  print("No Python 2 print patterns found in scripts/gcc-wrapper.py")
+          else:
+              print("scripts/gcc-wrapper.py not present, skip")
+
+          # 修复 init/Kconfig 第 16 行 $(shell,...) 语法不被 4.19 Kconfig 完全识别的问题
+          kconfig = Path("init/Kconfig")
+          if kconfig.exists():
+              src = kconfig.read_text()
+              bad_patterns = [
+                  (
+                      "default $(shell,$(srctree)/scripts/gcc-version.sh -p $(CC) | sed 's/^0*//') if CC_IS_GCC",
+                      "default 0 if CC_IS_GCC",
+                  ),
+                  (
+                      "default $(shell,$(srctree)/scripts/clang-version.sh $(CC))",
+                      "default 0",
+                  ),
+                  (
+                      "default $(shell,echo \"$$CC_VERSION\" | head -n 1)",
+                      "default 0",
+                  ),
+              ]
+              changed = 0
+              for bad, good in bad_patterns:
+                  if bad in src:
+                      src = src.replace(bad, good, 1)
+                      changed += 1
+                      print(f"Replaced: {bad[:60]}...")
+              if changed > 0:
+                  kconfig.write_text(src)
+                  print(f"Fixed {changed} Kconfig $(shell,...) patterns")
+              else:
+                  print("No Kconfig $(shell,...) patterns needed fixing")
+          else:
+              print("init/Kconfig not present, skip")
+          PY
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
