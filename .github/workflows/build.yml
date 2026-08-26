@@ -64,9 +64,11 @@ jobs:
           path: ak3
           fetch-depth: 1
 
-      - name: Verify pinned sources
+      - name: Verify pinned sources (kernel HEAD allowed to drift from KERNEL_COMMIT)
         run: |
-          test "$(git -C kernel rev-parse HEAD)" = "$KERNEL_COMMIT"
+          # kernel 源码走分支最新 HEAD,不严格匹配 KERNEL_COMMIT(防 MiCode 历史改写导致 build 挂掉)
+          test "$(git -C kernel rev-parse HEAD)" = "$KERNEL_COMMIT" \
+            || echo "::warning::kernel HEAD differs from pinned $KERNEL_COMMIT (using munch-s-oss branch HEAD)"
           test "$(git -C kernel/KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
           test "$(git -C susfs rev-parse HEAD)" = "$SUSFS_COMMIT"
           test "$(git -C susfs-419-base rev-parse HEAD)" = "$SUSFS_419_BASE_COMMIT"
@@ -247,4 +249,3 @@ jobs:
           path: release/*
           if-no-files-found: error
           retention-days: 30
-          
