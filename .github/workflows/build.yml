@@ -252,6 +252,78 @@ jobs:
           print("  extern inline remaining:", len(re.findall(r"extern inline", check)))
           PY
 
+      - name: Fix namespace.c SusFS calls + create uapi/app_profile.h
+        working-directory: kernel
+        run: |
+          # 预集成包遗漏的 SusFS 修改(patch-namespace 之前失败被容忍):
+          # 1. alloc_vfsmnt 1参数调用 -> 条件编译支持 3参数(CONFIG_KSU_SUSFS_SUS_MOUNT)
+          # 2. is_current_zygote_domain 未声明 -> 插入 bool 定义
+          # 3. allowlist.h include "uapi/app_profile.h" 但 uapi/ 不存在 -> 创建
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # --- 1. namespace.c ---
+          ns = Path("fs/namespace.c")
+          src = ns.read_text()
+          fixed = 0
+
+          # vfs_kern_mount: alloc_vfsmnt(name)
+          old1 = "\tmnt = alloc_vfsmnt(name);"
+          new1 = (
+              "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n"
+              "\tmnt = alloc_vfsmnt(name, false, 0);\n"
+              "#else\n"
+              "\tmnt = alloc_vfsmnt(name);\n"
+              "#endif\n"
+          )
+          if old1 in src:
+              src = src.replace(old1, new1, 1)
+              fixed += 1
+              print("namespace.c: fixed alloc_vfsmnt in vfs_kern_mount")
+
+          # clone_mnt: alloc_vfsmnt(old->mnt_devname)
+          old2 = "\tmnt = alloc_vfsmnt(old->mnt_devname);"
+          new2 = (
+              "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n"
+              "\tmnt = alloc_vfsmnt(old->mnt_devname, false, 0);\n"
+              "#else\n"
+              "\tmnt = alloc_vfsmnt(old->mnt_devname);\n"
+              "#endif\n"
+          )
+          if old2 in src:
+              src = src.replace(old2, new2, 1)
+              fixed += 1
+              print("namespace.c: fixed alloc_vfsmnt in clone_mnt")
+
+          # is_current_zygote_domain: 在 CONFIG_KSU_SUSFS_SUS_MOUNT 块内插入 bool 定义
+          old3 = "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n\t// If caller process is zygote"
+          new3 = (
+              "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n"
+              "\tbool is_current_zygote_domain = susfs_is_current_zygote_domain();\n"
+              "\t// If caller process is zygote"
+          )
+          if old3 in src:
+              src = src.replace(old3, new3, 1)
+              fixed += 1
+              print("namespace.c: added is_current_zygote_domain bool")
+
+          ns.write_text(src)
+          print(f"namespace.c fixes applied: {fixed}")
+
+          # --- 2. uapi/app_profile.h ---
+          profile_src = Path("drivers/kernelsu/policy/app_profile.h")
+          uapi_dst = Path("drivers/kernelsu/policy/uapi/app_profile.h")
+          if profile_src.exists():
+              uapi_dst.parent.mkdir(parents=True, exist_ok=True)
+              if not uapi_dst.exists():
+                  uapi_dst.write_text(profile_src.read_text())
+                  print("created drivers/kernelsu/policy/uapi/app_profile.h")
+              else:
+                  print("uapi/app_profile.h already exists")
+          else:
+              print("WARNING: app_profile.h source not found")
+          PY
+
       - name: Check out pinned AnyKernel3
         uses: actions/checkout@v4
         with:
