@@ -278,17 +278,25 @@ jobs:
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:/usr/lib/ccache:$PATH"
           make O=out vendor/munch_user_defconfig
+          # 关键: config KSU depends on KPROBES && EXT4_FS
+          # 且 KPROBES depends on KALLSYMS
+          # 若 KPROBES 未启用,olddefconfig 会把 CONFIG_KSU 降为 n
           scripts/config --file out/.config \
+            --enable KALLSYMS \
+            --enable KALLSYMS_ALL \
+            --enable KPROBES \
             --enable KSU \
             --enable KSU_SUSFS \
             --disable KPM
           make O=out olddefconfig
 
+          echo "=== .config KSU related ==="
+          grep -E 'CONFIG_KALLSYMS|CONFIG_KPROBES|CONFIG_KSU|CONFIG_KPM' out/.config || true
+
           grep -qx 'CONFIG_KSU=y' out/.config
           grep -qx 'CONFIG_KSU_SUSFS=y' out/.config
           grep -qx '# CONFIG_KPM is not set' out/.config
-          echo "=== .config KSU related ==="
-          grep -E 'CONFIG_KSU|CONFIG_KPM' out/.config
+          echo "Configure OK"
 
       - name: Build kernel
         working-directory: kernel
