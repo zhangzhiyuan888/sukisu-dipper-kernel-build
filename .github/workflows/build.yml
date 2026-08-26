@@ -150,6 +150,24 @@ jobs:
               print("Patched Makefile: CC wrapper now only when !LLVM")
           else:
               print("Makefile CC line not found (maybe already patched)")
+
+          # 修复 gcc-wrapper.py 的 Python 3 bytes/str 问题:
+          # subprocess.Popen 默认 stderr 是 bytes,Python 3 里 for line in stderr 得到 bytes
+          # line.rstrip('\\n') 需要 str -> TypeError: a bytes-like object is required
+          # 修复: universal_newlines=True 让 stderr 以 str 返回
+          gw = Path("scripts/gcc-wrapper.py")
+          if gw.exists():
+              gsrc = gw.read_text()
+              old_popen = "proc = subprocess.Popen(args, stderr=subprocess.PIPE)"
+              new_popen = "proc = subprocess.Popen(args, stderr=subprocess.PIPE, universal_newlines=True)"
+              if old_popen in gsrc:
+                  gsrc = gsrc.replace(old_popen, new_popen, 1)
+                  gw.write_text(gsrc)
+                  print("gcc-wrapper.py: added universal_newlines=True (fix bytes/str)")
+              else:
+                  print("gcc-wrapper.py Popen line not found (maybe already patched)")
+          else:
+              print("gcc-wrapper.py not found")
           PY
 
           # zip 解压丢失 Unix 文件权限,给所有脚本加执行位
