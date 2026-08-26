@@ -630,6 +630,43 @@ jobs:
               print("su_mount_ns.c: removed uapi/linux/mount.h include")
           else:
               print("WARNING: su_mount_ns.c include not found (already removed?)")
+
+          # ========== 4. pkg_observer.c 整体禁用 ==========
+          # 4.19 的 fsnotify_ops 只有 handle_event(4.19 后重构为 handle_inode_event,参数全变)
+          # 适配成本高,且只是包变化监控(非核心 root 功能) -> 禁用
+          # 4a. Kbuild 注释 pkg_observer.o
+          kb2 = Path("drivers/kernelsu/Kbuild")
+          k2 = kb2.read_text().replace("\r\n", "\n")
+          old_pkg = "kernelsu-objs += manager/pkg_observer.o"
+          if old_pkg in k2:
+              k2 = k2.replace(old_pkg, "# kernelsu-objs += manager/pkg_observer.o (4.19 fsnotify lacks handle_inode_event)", 1)
+              kb2.write_text(k2)
+              print("Kbuild: disabled pkg_observer.o")
+          else:
+              print("WARNING: Kbuild pkg_observer line not found")
+
+          # 4b. init.c 注释调用(否则链接 undefined reference)
+          ic2 = Path("drivers/kernelsu/core/init.c")
+          isrc = ic2.read_text().replace("\r\n", "\n")
+          n1 = isrc.count("ksu_observer_init();")
+          n2 = isrc.count("ksu_observer_exit();")
+          isrc = isrc.replace("ksu_observer_init();", "/* ksu_observer_init disabled: 4.19 fsnotify */", )
+          isrc = isrc.replace("ksu_observer_exit();", "/* ksu_observer_exit disabled: 4.19 fsnotify */", )
+          if n1 + n2:
+              ic2.write_text(isrc)
+              print(f"init.c: stubbed {n1} init + {n2} exit calls")
+          else:
+              print("WARNING: init.c observer calls not found")
+
+          # 4c. boot_event.c 注释调用
+          be2 = Path("drivers/kernelsu/runtime/boot_event.c")
+          bsrc = be2.read_text().replace("\r\n", "\n")
+          if "ksu_observer_init();" in bsrc:
+              bsrc = bsrc.replace("ksu_observer_init();", "/* ksu_observer_init disabled: 4.19 fsnotify */", 1)
+              be2.write_text(bsrc)
+              print("boot_event.c: stubbed ksu_observer_init call")
+          else:
+              print("WARNING: boot_event.c observer call not found")
           PY
 
       - name: Check out pinned AnyKernel3
