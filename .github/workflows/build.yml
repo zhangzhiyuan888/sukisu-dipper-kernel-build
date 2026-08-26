@@ -96,6 +96,49 @@ jobs:
                   print(f"  {critical}: CRLF={crlf}")
           PY
 
+      - name: Fix init/Kconfig $(shell,) syntax + chmod +x scripts
+        working-directory: kernel
+        run: |
+          # 修 init/Kconfig 里 4.19 Kconfig 解析器不识别的 $(shell,...) 语法
+          # 预集成包用的是 munch-s-oss HEAD 原始代码,没经过我之前 v4 的 fix
+          python3 - <<'PY'
+          from pathlib import Path
+
+          kconfig = Path("init/Kconfig")
+          src = kconfig.read_text()
+          patterns = [
+              (
+                  "default $(shell,$(srctree)/scripts/gcc-version.sh -p $(CC) | sed 's/^0*//') if CC_IS_GCC",
+                  "default 0 if CC_IS_GCC",
+              ),
+              (
+                  "default $(shell,$(srctree)/scripts/clang-version.sh $(CC))",
+                  "default 0",
+              ),
+              (
+                  "default $(shell,echo \"$$CC_VERSION\" | head -n 1)",
+                  "default 0",
+              ),
+          ]
+          changed = 0
+          for bad, good in patterns:
+              if bad in src:
+                  src = src.replace(bad, good, 1)
+                  changed += 1
+                  print(f"Replaced: {bad[:60]}...")
+          if changed > 0:
+              kconfig.write_text(src)
+              print(f"Fixed {changed} Kconfig $(shell,...) patterns")
+          else:
+              print("No Kconfig $(shell,...) patterns needed fixing")
+          PY
+
+          # zip 解压丢失 Unix 文件权限,给所有 shell/perl 脚本加执行位
+          # 否则 Kconfig 解析器调 gcc-version.sh/clang-version.sh/gcc-plugin.sh 时 Permission denied
+          find scripts/ -type f \( -name "*.sh" -o -name "*.pl" \) -exec chmod +x {} \;
+          chmod +x scripts/gcc-version.sh scripts/clang-version.sh scripts/gcc-plugin.sh 2>/dev/null || true
+          echo "chmod +x scripts/*.sh and *.pl done"
+
       - name: Check out pinned AnyKernel3
         uses: actions/checkout@v4
         with:
