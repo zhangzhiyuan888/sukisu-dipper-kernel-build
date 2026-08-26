@@ -506,25 +506,25 @@ jobs:
               print("include/linux/pgtable.h already exists")
           PY
 
-      - name: Patch KSU file_wrapper.c for 4.19 compat
+      - name: Patch KSU file_wrapper.c + disable seccomp_cache for 4.19
         working-directory: kernel
         run: |
-          # KSU 新版 file_wrapper.c 用了 4.19 没有的 API:
-          #   iopoll            (5.9+ 才有)
-          #   REMAP_FILE_DEDUP  (5.5+ 才有)
-          #   remap_file_range  (4.20+ 才有;4.19 用 dedupe_file_range)
-          # 给这些位置加 LINUX_VERSION_CODE 条件编译,4.19 下直接禁用
+          # KSU 新版代码用了 4.19 没有的 API,逐个加版本门槛或禁用:
+          # 1. file_wrapper.c: iopoll(5.9+)/REMAP_FILE_DEDUP(5.5+)/remap_file_range(4.20+)
+          # 2. seccomp_cache: 4.19 无 SECCOMP_ARCH_NATIVE_NR,且 KSU 自定义
+          #    struct seccomp_filter 与 4.19 内核实际结构不符 -> 整体禁用(仅性能优化)
           python3 - <<'PY'
           import re
           from pathlib import Path
 
+          # ========== 1. file_wrapper.c ==========
           fw = Path("drivers/kernelsu/infra/file_wrapper.c")
           src = fw.read_text()
           orig = src
           # file_wrapper.c 是 CRLF,先统一转 LF 再打补丁(正则含 \n)
           src = src.replace("\r\n", "\n")
 
-          # 1. ksu_wrapper_iopoll 函数整体包 #if >= 5.9
+          # 1a. ksu_wrapper_iopoll 函数整体包 #if >= 5.9
           pat1 = re.compile(
               r"#if LINUX_VERSION_CODE >= KERNEL_VERSION\(6, 1, 0\)\n"
               r"static int ksu_wrapper_iopoll.*?\n#endif\n",
@@ -542,7 +542,7 @@ jobs:
           else:
               print("WARNING: iopoll block not found")
 
-          # 2. ksu_wrapper_remap_file_range 函数整体包 #if >= 5.5
+          # 1b. ksu_wrapper_remap_file_range 函数整体包 #if >= 5.5
           pat2 = re.compile(
               r"static loff_t ksu_wrapper_remap_file_range\(.*?\n\}\n",
               re.DOTALL)
@@ -559,7 +559,7 @@ jobs:
           else:
               print("WARNING: remap_file_range block not found")
 
-          # 3. p->ops.iopoll 赋值
+          # 1c. p->ops.iopoll 赋值
           old3 = "    p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;"
           new3 = (
               "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)\n"
@@ -572,7 +572,7 @@ jobs:
           else:
               print("WARNING: iopoll assignment not found")
 
-          # 4. p->ops.remap_file_range 赋值
+          # 1d. p->ops.remap_file_range 赋值
           old4 = "    p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;"
           new4 = (
               "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5, 0)\n"
@@ -590,6 +590,32 @@ jobs:
               print("file_wrapper.c patched for 4.19 (CRLF->LF)")
           else:
               print("file_wrapper.c unchanged (already patched?)")
+
+          # ========== 2. seccomp_cache 整体禁用 ==========
+          # Kbuild: 去掉 seccomp_cache.o
+          kb = Path("drivers/kernelsu/Kbuild")
+          ksrc = kb.read_text().replace("\r\n", "\n")
+          old = "kernelsu-objs += infra/seccomp_cache.o"
+          new = "# kernelsu-objs += infra/seccomp_cache.o (4.19 lacks SECCOMP_ARCH_NATIVE_NR)"
+          if old in ksrc:
+              ksrc = ksrc.replace(old, new, 1)
+              kb.write_text(ksrc)
+              print("Kbuild: disabled seccomp_cache.o")
+          else:
+              print("WARNING: Kbuild seccomp line not found (already disabled?)")
+
+          # setuid_hook.c: stub 两处调用
+          sh = Path("drivers/kernelsu/hook/setuid_hook.c")
+          ssrc = sh.read_text().replace("\r\n", "\n")
+          old_call = "ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);"
+          new_call = "/* ksu_seccomp_allow_cache disabled on 4.19 */\n        (void)__NR_reboot;"
+          ncalls = ssrc.count(old_call)
+          if ncalls:
+              ssrc = ssrc.replace(old_call, new_call)
+              sh.write_text(ssrc)
+              print(f"setuid_hook.c: stubbed {ncalls} ksu_seccomp_allow_cache calls")
+          else:
+              print("WARNING: seccomp_allow_cache calls not found (already stubbed?)")
           PY
 
       - name: Check out pinned AnyKernel3
