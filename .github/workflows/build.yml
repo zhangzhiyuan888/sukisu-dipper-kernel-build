@@ -171,9 +171,9 @@ jobs:
           PY
 
           # zip 解压丢失 Unix 文件权限,给所有脚本加执行位
-          # 否则 Kconfig 解析器调 gcc-version.sh/clang-version.sh/gcc-plugin.sh 时 Permission denied
-          # 同时 scripts/config (无后缀的 Python 脚本) 也要 chmod +x
-          find scripts/ -type f \( -name "*.py" -o -name "*.sh" -o -name "*.pl" \) -exec chmod +x {} \;
+          # 注意: 必须覆盖整个内核树(不仅是 scripts/),arch/arm64/kernel/vdso/gen_vdso_offsets.sh 也需要
+          find . -type f \( -name "*.py" -o -name "*.sh" -o -name "*.pl" \) \
+            -not -path './out/*' -not -path './.git*' -exec chmod +x {} \;
           # 无后缀但有 shebang 的脚本
           for f in scripts/config scripts/checkpatch.pl scripts/gcc-wrapper.py scripts/clang-wrapper.py; do
             if [ -f "$f" ] && ! head -c 2 "$f" | grep -q '#!'; then
@@ -182,7 +182,7 @@ jobs:
             fi
             [ -f "$f" ] && chmod +x "$f"
           done
-          echo "chmod +x scripts/*.py and *.sh and *.pl done"
+          echo "chmod +x all scripts (.py .sh .pl) across kernel tree done"
 
       - name: Patch gcc-version.sh for clang compatibility
         working-directory: kernel
