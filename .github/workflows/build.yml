@@ -154,11 +154,15 @@ jobs:
           # 但 make LLVM=1 时 CC=clang,clang 默认不定义 __GNUC__
           # clang -E 输出警告文本,printf "%02d%02d%02d" 收到非数字参数崩
           # 解决:替换成 clang 兼容 stub (KBUILD_VERSION 只影响 banner,不影响实际编译)
-          cat > scripts/gcc-version.sh <<'EOF'
-#!/bin/sh
-# stub for clang: KBUILD_VERSION 实际不影响编译,只是 banner 显示
-echo "001300"
-EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          Path("scripts/gcc-version.sh").write_text(
+              "#!/bin/sh\n"
+              "# stub for clang: KBUILD_VERSION does not affect build\n"
+              "echo \"001300\"\n"
+          )
+          print("gcc-version.sh patched (clang-compatible stub)")
+          PY
           chmod +x scripts/gcc-version.sh
           echo "gcc-version.sh patched (clang-compatible stub)"
 
