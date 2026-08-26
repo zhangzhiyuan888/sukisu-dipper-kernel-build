@@ -506,13 +506,14 @@ jobs:
               print("include/linux/pgtable.h already exists")
           PY
 
-      - name: Patch KSU file_wrapper.c + disable seccomp_cache for 4.19
+      - name: Patch KSU 4.19 compat (file_wrapper + seccomp + su_mount_ns)
         working-directory: kernel
         run: |
           # KSU 新版代码用了 4.19 没有的 API,逐个加版本门槛或禁用:
           # 1. file_wrapper.c: iopoll(5.9+)/REMAP_FILE_DEDUP(5.5+)/remap_file_range(4.20+)
           # 2. seccomp_cache: 4.19 无 SECCOMP_ARCH_NATIVE_NR,且 KSU 自定义
           #    struct seccomp_filter 与 4.19 内核实际结构不符 -> 整体禁用(仅性能优化)
+          # 3. su_mount_ns.c: include uapi/linux/mount.h(5.2+ 头)但未使用 -> 删除 include
           python3 - <<'PY'
           import re
           from pathlib import Path
@@ -616,6 +617,19 @@ jobs:
               print(f"setuid_hook.c: stubbed {ncalls} ksu_seccomp_allow_cache calls")
           else:
               print("WARNING: seccomp_allow_cache calls not found (already stubbed?)")
+
+          # ========== 3. su_mount_ns.c 删除 uapi/linux/mount.h include ==========
+          # 5.2+ 才有的 UAPI 头,4.19 没有;且本文件未使用其任何符号
+          smns = Path("drivers/kernelsu/infra/su_mount_ns.c")
+          mnsrc = smns.read_text().replace("\r\n", "\n")
+          old_inc = "#include <uapi/linux/mount.h>\n"
+          new_inc = "/* uapi/linux/mount.h removed: 5.2+ header, unused on 4.19 */\n"
+          if old_inc in mnsrc:
+              mnsrc = mnsrc.replace(old_inc, new_inc, 1)
+              smns.write_text(mnsrc)
+              print("su_mount_ns.c: removed uapi/linux/mount.h include")
+          else:
+              print("WARNING: su_mount_ns.c include not found (already removed?)")
           PY
 
       - name: Check out pinned AnyKernel3
