@@ -496,6 +496,14 @@ jobs:
               _path = _uapi_dir / _fn
               _path.write_bytes(_b64.b64decode(_b64s))
               print(f"created drivers/kernelsu/uapi/{_fn}")
+
+          # --- 3. linux/pgtable.h stub (5.x 才有的头,4.19 缺失,sucompat.c 只需它存在) ---
+          _pt = _P("include/linux/pgtable.h")
+          if not _pt.exists():
+              _pt.write_text("#ifndef _LINUX_PGTABLE_H\n#define _LINUX_PGTABLE_H\n/* 4.19 stub */\n#include <linux/mm.h>\n#include <asm/pgtable.h>\n#endif\n")
+              print("created include/linux/pgtable.h stub")
+          else:
+              print("include/linux/pgtable.h already exists")
           PY
 
       - name: Check out pinned AnyKernel3
