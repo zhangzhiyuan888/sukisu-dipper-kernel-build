@@ -290,12 +290,10 @@ jobs:
         working-directory: kernel
         env:
           ARCH: arm64
-          LLVM: 1
-          LLVM_IAS: 1
           CROSS_COMPILE: aarch64-linux-gnu-
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
-          export PATH="$GITHUB_WORKSPACE/clang/bin:/usr/lib/ccache:$PATH"
+          export PATH="/usr/lib/ccache:$PATH"
           make O=out vendor/munch_user_defconfig
           # 关键: config KSU depends on KPROBES && EXT4_FS
           # 且 KPROBES depends on KALLSYMS
@@ -321,20 +319,19 @@ jobs:
         working-directory: kernel
         env:
           ARCH: arm64
-          LLVM: 1
-          LLVM_IAS: 1
           CROSS_COMPILE: aarch64-linux-gnu-
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
           KBUILD_BUILD_USER: codex
           KBUILD_BUILD_HOST: github-actions
         run: |
-          export PATH="$GITHUB_WORKSPACE/clang/bin:/usr/lib/ccache:$PATH"
+          export PATH="/usr/lib/ccache:$PATH"
           # 修复 GNU make 4.3 不自动创建 obj 子目录的问题
           # (4.19 Kbuild 的 $(shell mkdir -p $(obj-dirs)) 依赖 KBUILD_SRC,make 4.3 下未生效)
           # 方案:镜像所有源码目录到 out/,一劳永逸
           find . -type d -not -path './out/*' -not -path './.git*' \
             | sed 's|^\.|out|' | xargs mkdir -p
           echo "mirrored $(find . -type d -not -path './out/*' -not -path './.git*' | wc -l) source dirs to out/"
+          # 用 GCC 交叉编译(小米官方方式),clang 编译 4.19 有 vdso/aes-modes 兼容问题
           make -j"$(nproc)" O=out KSU_VERSION=${{ env.KSU_VERSION }} Image.gz-dtb
 
       - name: Verify compiled kernel
