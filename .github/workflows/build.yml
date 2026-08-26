@@ -310,6 +310,12 @@ jobs:
           KBUILD_BUILD_HOST: github-actions
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:/usr/lib/ccache:$PATH"
+          # 修复 GNU make 4.3 不自动创建 obj 子目录的问题
+          # (4.19 Kbuild 的 $(shell mkdir -p $(obj-dirs)) 依赖 KBUILD_SRC,make 4.3 下未生效)
+          # 方案:镜像所有源码目录到 out/,一劳永逸
+          find . -type d -not -path './out/*' -not -path './.git*' \
+            | sed 's|^\.|out|' | xargs mkdir -p
+          echo "mirrored $(find . -type d -not -path './out/*' -not -path './.git*' | wc -l) source dirs to out/"
           make -j"$(nproc)" O=out KSU_VERSION=${{ env.KSU_VERSION }} Image.gz-dtb
 
       - name: Verify compiled kernel
