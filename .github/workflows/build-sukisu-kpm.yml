@@ -73,11 +73,14 @@ jobs:
           bash build.sh munch sukisu-kpm miui 2>&1 | tee /tmp/build.log
           echo "=== build log tail ==="
           tail -20 /tmp/build.log
+          echo "=== flashable zip ==="
+          ls -la *.zip 2>&1
+          test -f *.zip && echo "ZIP OK"
 
       - name: Upload flashable kernel
         uses: actions/upload-artifact@v4
         with:
           name: munch-sukisu-kpm-miui
-          path: kernel/Kernel_*.zip
+          path: kernel/*.zip
           if-no-files-found: error
           retention-days: 30
