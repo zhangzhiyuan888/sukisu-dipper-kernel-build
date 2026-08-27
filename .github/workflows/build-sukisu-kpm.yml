@@ -42,13 +42,16 @@ jobs:
           test -x proton-clang/proton-clang-20210522/bin/clang
           proton-clang/proton-clang-20210522/bin/clang --version | head -2
 
-      - name: Patch build.sh (KPROBES + KSU_MANUAL_HOOK for 4.19)
+      - name: Patch build.sh (KPROBES + KSU_MANUAL_HOOK + lock SukiSU tag for 4.19)
         working-directory: kernel
         run: |
-          # 修复 koyufox build.sh 的两个 4.19 坑:
+          # 修复 koyufox build.sh 的三个 4.19 坑:
           # 1. SukiSU 4.x config KSU depends on KPROBES,但 build.sh 没 enable
           #    -> olddefconfig 会把 KSU 静默降为 n,KSU 根本不编译进内核
           # 2. sukisu-kpm 分支会 -d KSU_MANUAL_HOOK,但非 GKI 4.19 需要它
+          # 3. build.sh 用 'setup.sh -s nongki' 是旧接口(已失效,回退 main 最新)
+          #    SukiSU main 的 KPM 代码已改用 5.x access_ok(2参),4.19 编译失败
+          #    -> 锁定到稳定 tag v4.1.3 (KPM 代码仍是 4.19 时代)
           python3 - <<'PY'
           from pathlib import Path
           p = Path("build.sh")
@@ -63,6 +66,9 @@ jobs:
               "scripts/config --file out/.config -d KSU_MANUAL_HOOK",
               "scripts/config --file out/.config -e KSU_MANUAL_HOOK")
           print(f"patched KSU_MANUAL_HOOK ({n2} -> enable)")
+          n3 = s.count("bash -s nongki")
+          s = s.replace("bash -s nongki", "bash -s v4.1.3")
+          print(f"patched setup.sh arg nongki -> v4.1.3 ({n3} replaced)")
           p.write_text(s)
           print("build.sh patched OK")
           PY
