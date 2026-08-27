@@ -69,6 +69,17 @@ jobs:
           n3 = s.count("bash -s nongki")
           s = s.replace("bash -s nongki", "bash -s v4.1.3")
           print(f"patched setup.sh arg nongki -> v4.1.3 ({n3} replaced)")
+
+          # 4. v4.1.3 init.c 用了 MODULE_IMPORT_NS(5.4+ 宏),4.19 没有
+          #    -> 在 setup.sh 集成 KSU 源码之后(编译之前)注入补丁,
+          #       把 MODULE_IMPORT_NS 整块包进 #if >= 5.4 (base64 避免 YAML 缩进问题)
+          import base64
+          inject = base64.b64decode("IyAtLS0tIDQuMTkgY29tcGF0OiBNT0RVTEVfSU1QT1JUX05TIGlzIDUuNCssIHdyYXAgaW4gI2lmIC0tLS0KcHl0aG9uMyAtIDw8J1BBVENIX0tTVV9JTklUJwpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKaWMgPSBQYXRoKCJkcml2ZXJzL2tlcm5lbHN1L2NvcmUvaW5pdC5jIikKaWYgaWMuZXhpc3RzKCk6CiAgICBzcmMgPSBpYy5yZWFkX3RleHQoKQogICAgb2xkID0gIiIiI2lmIExJTlVYX1ZFUlNJT05fQ09ERSA+PSBLRVJORUxfVkVSU0lPTig2LCAxMywgMCkKTU9EVUxFX0lNUE9SVF9OUygiVkZTX2ludGVybmFsX0lfYW1fcmVhbGx5X2FfZmlsZXN5c3RlbV9hbmRfYW1fTk9UX2FfZHJpdmVyIik7CiNlbHNlCk1PRFVMRV9JTVBPUlRfTlMoVkZTX2ludGVybmFsX0lfYW1fcmVhbGx5X2FfZmlsZXN5c3RlbV9hbmRfYW1fTk9UX2FfZHJpdmVyKTsKI2VuZGlmCiIiIgogICAgbmV3ID0gIiIiI2lmIExJTlVYX1ZFUlNJT05fQ09ERSA+PSBLRVJORUxfVkVSU0lPTig1LCA0LCAwKQojaWYgTElOVVhfVkVSU0lPTl9DT0RFID49IEtFUk5FTF9WRVJTSU9OKDYsIDEzLCAwKQpNT0RVTEVfSU1QT1JUX05TKCJWRlNfaW50ZXJuYWxfSV9hbV9yZWFsbHlfYV9maWxlc3lzdGVtX2FuZF9hbV9OT1RfYV9kcml2ZXIiKTsKI2Vsc2UKTU9EVUxFX0lNUE9SVF9OUyhWRlNfaW50ZXJuYWxfSV9hbV9yZWFsbHlfYV9maWxlc3lzdGVtX2FuZF9hbV9OT1RfYV9kcml2ZXIpOwojZW5kaWYKI2VuZGlmIC8qIDQuMTk6IE1PRFVMRV9JTVBPUlRfTlMgaXMgNS40KyAqLwoiIiIKICAgIGlmIG9sZCBpbiBzcmM6CiAgICAgICAgaWMud3JpdGVfdGV4dChzcmMucmVwbGFjZShvbGQsIG5ldywgMSkpCiAgICAgICAgcHJpbnQoImluaXQuYzogTU9EVUxFX0lNUE9SVF9OUyB3cmFwcGVkICgjaWYgNS40KykiKQogICAgZWxzZToKICAgICAgICBwcmludCgiaW5pdC5jOiBibG9jayBub3QgZm91bmQgKGFscmVhZHkgcGF0Y2hlZD8pIikKZWxzZToKICAgIHByaW50KCJXQVJOSU5HOiBkcml2ZXJzL2tlcm5lbHN1L2NvcmUvaW5pdC5jIG5vdCBmb3VuZCIpClBBVENIX0tTVV9JTklUCg==").decode("utf-8")
+          anchor = 'echo "Cleaning..."'
+          na = s.count(anchor)
+          s = s.replace(anchor, inject + anchor, 1)
+          print(f"injected init.c patch before 'Cleaning...' ({na} anchor found)")
+
           p.write_text(s)
           print("build.sh patched OK")
           PY
