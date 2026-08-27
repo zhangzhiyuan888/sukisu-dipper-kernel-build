@@ -942,17 +942,20 @@ jobs:
               # O=out 异源构建时 GCC 的工作目录是 out/,$(src) 展开成相对路径
               # drivers/kernelsu/ksu_compat_419.h 在 out/ 下找不到 -> 改用 ccflags-y +
               # $(srctree)(源码根,绝对可解析),force-include 才稳定生效
-              k = k.replace(
-                  "-include $(srctree)/include/uapi/asm-generic/errno.h",
-                  "ccflags-y += -include $(srctree)/drivers/kernelsu/ksu_compat_419.h\n-include $(srctree)/include/uapi/asm-generic/errno.h",
-                  1,
-              )
+              # 关键: 必须以 ccflags-y += 前缀追加,绝不能写成裸 -include
+              # (否则 make 会把 errno.h 当成 Makefile 来解析 -> "missing separator" 致命错误)
+              marker = "ccflags-y += -include $(srctree)/include/uapi/asm-generic/errno.h"
+              addon = "\nccflags-y += -include $(srctree)/drivers/kernelsu/ksu_compat_419.h"
+              if marker in k:
+                  k = k.replace(marker, marker + addon, 1)
+              else:
+                  k = k + addon + "\n"
               print("Kbuild: force-include ksu_compat_419.h")
           kb.write_text(k)
 
           ds = Path("drivers/gpu/drm/drm_sysfs.c")
           t = ds.read_text().replace("\r\n", "\n")
-          pat = "dsi_display_[A-Za-z0-9_]+" + chr(40) + "[^;]*" + chr(41)
+          pat = "dsi_display_[A-Za-z0-9_]+" + chr(40) + "[^)]*" + chr(41)
           new = re.sub(pat, "0", t)
           if new != t:
               ds.write_text(new)
