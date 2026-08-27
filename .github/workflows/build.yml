@@ -710,6 +710,69 @@ jobs:
           if a_changed:
               ap.write_text(asrc)
               print("app_profile.c patched for 4.19")
+
+          # ========== 7. SELinux 规则/隐藏功能整体禁用 ==========
+          # rules.c/sepolicy.c/selinux_hide.c 依赖 5.x 的 struct selinux_policy 封装
+          # (selinux_state.policy/policy_mutex),4.19 结构完全不同无法编译
+          # -> 整体禁用(非核心 root 功能,基本授权/SusFS 隐藏不受影响)
+          # 7a. Kbuild 注释 3 个 .o
+          kb3 = Path("drivers/kernelsu/Kbuild")
+          k3 = kb3.read_text().replace("\r\n", "\n")
+          for old_obj in [
+              "kernelsu-objs += selinux/rules.o",
+              "kernelsu-objs += selinux/sepolicy.o",
+              "kernelsu-objs += feature/selinux_hide.o",
+          ]:
+              if old_obj in k3:
+                  k3 = k3.replace(old_obj, "# " + old_obj + " (4.19 selinux_state lacks selinux_policy)", 1)
+                  print(f"Kbuild: disabled {old_obj}")
+              else:
+                  print(f"WARNING: {old_obj} not found (already disabled?)")
+          kb3.write_text(k3)
+
+          # 7b. init.c 一次读取,连续 stub 3 处
+          ic3 = Path("drivers/kernelsu/core/init.c")
+          isrc3 = ic3.read_text().replace("\r\n", "\n")
+          for old, new in [
+              ("ksu_selinux_hide_init();", "/* ksu_selinux_hide_init disabled: 4.19 */"),
+              ("apply_kernelsu_rules();", "/* apply_kernelsu_rules disabled: 4.19 */"),
+              ("ksu_selinux_hide_exit();", "/* ksu_selinux_hide_exit disabled: 4.19 */"),
+          ]:
+              if old in isrc3:
+                  isrc3 = isrc3.replace(old, new, 1)
+                  print(f"init.c: stubbed {old}")
+              else:
+                  print(f"WARNING: init.c {old} not found")
+          ic3.write_text(isrc3)
+
+          # 7c. boot_event.c 一次读取,连续 stub 2 处
+          be3 = Path("drivers/kernelsu/runtime/boot_event.c")
+          bsrc3 = be3.read_text().replace("\r\n", "\n")
+          for old, new in [
+              ("ksu_selinux_hide_handle_post_fs_data();", "/* selinux_hide disabled: 4.19 */"),
+              ("ksu_selinux_hide_drop_backup_if_unused();", "/* selinux_hide disabled: 4.19 */"),
+          ]:
+              if old in bsrc3:
+                  bsrc3 = bsrc3.replace(old, new, 1)
+                  print(f"boot_event.c: stubbed {old}")
+              else:
+                  print(f"WARNING: boot_event.c {old} not found")
+          be3.write_text(bsrc3)
+
+          # 7d. ksud_integration.c 一次读取,连续 stub 2 处
+          ki3 = Path("drivers/kernelsu/runtime/ksud_integration.c")
+          ksrc3 = ki3.read_text().replace("\r\n", "\n")
+          for old, new in [
+              ("ksu_selinux_hide_handle_second_stage();", "/* selinux_hide disabled: 4.19 */"),
+              ("apply_kernelsu_rules();", "/* apply_kernelsu_rules disabled: 4.19 */"),
+          ]:
+              if old in ksrc3:
+                  ksrc3 = ksrc3.replace(old, new, 1)
+                  print(f"ksud_integration.c: stubbed {old}")
+              else:
+                  print(f"WARNING: ksud_integration.c {old} not found")
+          ki3.write_text(ksrc3)
+          print("selinux rules/hide disabled for 4.19")
           PY
 
       - name: Check out pinned AnyKernel3
