@@ -73,10 +73,10 @@ jobs:
           print("build.sh patched OK")
           PY
 
-      - name: Build munch SukiSU-KPM for MIUI
+      - name: Build munch SukiSU (noKPM) for MIUI
         working-directory: kernel
         run: |
-          bash build.sh munch sukisu-kpm miui 2>&1 | tee /tmp/build.log
+          bash build.sh munch sukisu miui 2>&1 | tee /tmp/build.log
           echo "=== build log tail ==="
           tail -20 /tmp/build.log
           echo "=== flashable zip ==="
@@ -86,7 +86,7 @@ jobs:
       - name: Upload flashable kernel
         uses: actions/upload-artifact@v4
         with:
-          name: munch-sukisu-kpm-miui
+          name: munch-sukisu-miui
           path: kernel/*.zip
           if-no-files-found: error
           retention-days: 30
