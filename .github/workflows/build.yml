@@ -955,8 +955,36 @@ jobs:
 
           ds = Path("drivers/gpu/drm/drm_sysfs.c")
           t = ds.read_text().replace("\r\n", "\n")
-          pat = "dsi_display_[A-Za-z0-9_]+" + chr(40) + "[^)]*" + chr(41)
-          new = re.sub(pat, "0", t)
+
+          # 把 drm_sysfs.c 里所有 dsi_display_*(...) 调用替换成 0。
+          # 用括号深度匹配,而不是 [^)]*(后者遇到嵌套调用如 dsi_display_foo(bar(a)) 会截断成坏语法)。
+          def stub_dsi(s):
+              out = []
+              i = 0
+              n = len(s)
+              while True:
+                  j = s.find("dsi_display_", i)
+                  if j == -1:
+                      out.append(s[i:]); break
+                  out.append(s[i:j])
+                  k = s.find("(", j)
+                  if k == -1:
+                      out.append(s[j:]); break
+                  depth = 0
+                  p = k
+                  while p < n:
+                      if s[p] == '(':
+                          depth += 1
+                      elif s[p] == ')':
+                          depth -= 1
+                          if depth == 0:
+                              break
+                      p += 1
+                  out.append("0")
+                  i = p + 1
+              return ''.join(out)
+
+          new = stub_dsi(t)
           if new != t:
               ds.write_text(new)
               print("drm_sysfs.c: stubbed dsi_display_* calls")
