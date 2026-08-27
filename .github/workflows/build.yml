@@ -920,6 +920,38 @@ jobs:
           print(f"Remaining Python 2 print: {remaining}")
           PY
 
+      - name: Add 4.19 compat shims (nofault/selinux/mount/sepolicy) + stub display sysfs
+        working-directory: kernel
+        run: |
+          python3 - <<'PY'
+          import base64, re
+          from pathlib import Path
+
+          h_b64 = "I2lmbmRlZiBfX0tTVV9DT01QQVRfNDE5X0gKI2RlZmluZSBfX0tTVV9DT01QQVRfNDE5X0gKCiNpbmNsdWRlIDxsaW51eC90eXBlcy5oPgojaW5jbHVkZSA8bGludXgvdmVyc2lvbi5oPgojaW5jbHVkZSA8bGludXgvdWFjY2Vzcy5oPgojaW5jbHVkZSA8bGludXgvY3JlZC5oPgojaW5jbHVkZSA8bGludXgvZnMuaD4KI2luY2x1ZGUgPGxpbnV4L3NjaGVkL3NpZ25hbC5oPgojaW5jbHVkZSA8bGludXgvc2NoZWQvdGFzay5oPgojaW5jbHVkZSA8bGludXgvc2VjdXJpdHkuaD4KI2luY2x1ZGUgPGxpbnV4L3BhdGguaD4KI2luY2x1ZGUgPGxpbnV4L21vdW50Lmg+CgpzdHJ1Y3QgdGFza19zZWN1cml0eV9zdHJ1Y3Q7CnN0cnVjdCBpbm9kZV9zZWN1cml0eV9zdHJ1Y3Q7CgovKiA0LjE5IGxhY2tzIHRoZSBfbm9mYXVsdCB1c2VyIGNvcHkgdmFyaWFudHMgKGFkZGVkIGluIDUueCkgKi8KdW5zaWduZWQgbG9uZyBjb3B5X2Zyb21fdXNlcl9ub2ZhdWx0KHZvaWQgKmRzdCwgY29uc3Qgdm9pZCBfX3VzZXIgKnNyYywgdW5zaWduZWQgbG9uZyBzaXplKTsKdW5zaWduZWQgbG9uZyBjb3B5X3RvX3VzZXJfbm9mYXVsdCh2b2lkIF9fdXNlciAqZHN0LCBjb25zdCB2b2lkICpzcmMsIHVuc2lnbmVkIGxvbmcgc2l6ZSk7CnVuc2lnbmVkIGxvbmcgY29weV90b19rZXJuZWxfbm9mYXVsdCh2b2lkICpkc3QsIGNvbnN0IHZvaWQgX191c2VyICpzcmMsIHVuc2lnbmVkIGxvbmcgc2l6ZSk7Cmxvbmcgc3RybmNweV9mcm9tX3VzZXJfbm9mYXVsdChjaGFyICpkc3QsIGNvbnN0IHZvaWQgX191c2VyICpzcmMsIGxvbmcgY291bnQpOwoKLyogc2VsaW51eCBhY2Nlc3NvcnM6IDQuMTkgaGFzIHRoZW0gYXMgc3RhdGljIGlubGluZS9pbnRlcm5hbCwgbm90IGV4cG9ydGVkICovCnN0cnVjdCB0YXNrX3NlY3VyaXR5X3N0cnVjdCAqc2VsaW51eF9jcmVkKGNvbnN0IHN0cnVjdCBjcmVkICpjcmVkKTsKc3RydWN0IGlub2RlX3NlY3VyaXR5X3N0cnVjdCAqc2VsaW51eF9pbm9kZShjb25zdCBzdHJ1Y3QgaW5vZGUgKmlub2RlKTsKaW50IHNlY3VyaXR5X2lub2RlX2luaXRfc2VjdXJpdHlfYW5vbihzdHJ1Y3QgaW5vZGUgKmlub2RlLCBjb25zdCBzdHJ1Y3QgcXN0ciAqbmFtZSwgY29uc3Qgc3RydWN0IGlub2RlICpjb250ZXh0X2lub2RlKTsKCi8qIG1vdW50IGhlbHBlcnM6IDQuMTkgbGFja3MgcHVibGljIHBhdGhfbW91bnQvcGF0aF91bW91bnQgKi8KaW50IHBhdGhfbW91bnQoY29uc3QgY2hhciAqZGV2X25hbWUsIHN0cnVjdCBwYXRoICpwYXRoLCBjb25zdCBjaGFyICp0eXBlX3BhZ2UsIHVuc2lnbmVkIGxvbmcgZmxhZ3MsIHZvaWQgKmRhdGFfcGFnZSk7CmludCBwYXRoX3Vtb3VudChzdHJ1Y3QgcGF0aCAqcGF0aCwgaW50IGZsYWdzKTsKCi8qIHN0dWIgZm9yIGRpc2FibGVkIFNFTGludXggc2Vwb2xpY3kgY2hhaW4gKDQuMTkpICovCmludCBoYW5kbGVfc2Vwb2xpY3kodm9pZCBfX3VzZXIgKnVzZXJfZGF0YSwgdTY0IGRhdGFfbGVuKTsKCiNlbmRpZgo="
+          c_b64 = "I2luY2x1ZGUgImtzdV9jb21wYXRfNDE5LmgiCgovKgogKiA0LjE5IGNvbXBhdCBzaGltcyBmb3IgU3VraVNVIHN5bWJvbHMgdGhhdCBvbmx5IGV4aXN0IGluIDUueCBrZXJuZWxzLgogKiBNaW5pbWFsLWJvb3RhYmxlLWtlcm5lbCBhcHByb2FjaDogZmFsbCBiYWNrIHRvIHRoZSBjbG9zZXN0IDQuMTkgcHJpbWl0aXZlLgogKi8KCi8qIF9ub2ZhdWx0IHVzZXIgY29waWVzIC0+IHBsYWluIGNvcGllcyAoYWNjZXB0YWJsZSBmb3IgS1NVIG9uIDQuMTkpICovCnVuc2lnbmVkIGxvbmcgY29weV9mcm9tX3VzZXJfbm9mYXVsdCh2b2lkICpkc3QsIGNvbnN0IHZvaWQgX191c2VyICpzcmMsIHVuc2lnbmVkIGxvbmcgc2l6ZSkKewogICAgcmV0dXJuIGNvcHlfZnJvbV91c2VyKGRzdCwgc3JjLCBzaXplKTsKfQp1bnNpZ25lZCBsb25nIGNvcHlfdG9fdXNlcl9ub2ZhdWx0KHZvaWQgX191c2VyICpkc3QsIGNvbnN0IHZvaWQgKnNyYywgdW5zaWduZWQgbG9uZyBzaXplKQp7CiAgICByZXR1cm4gY29weV90b191c2VyKGRzdCwgc3JjLCBzaXplKTsKfQp1bnNpZ25lZCBsb25nIGNvcHlfdG9fa2VybmVsX25vZmF1bHQodm9pZCAqZHN0LCBjb25zdCB2b2lkIF9fdXNlciAqc3JjLCB1bnNpZ25lZCBsb25nIHNpemUpCnsKICAgIHJldHVybiBjb3B5X2Zyb21fdXNlcihkc3QsIHNyYywgc2l6ZSk7Cn0KbG9uZyBzdHJuY3B5X2Zyb21fdXNlcl9ub2ZhdWx0KGNoYXIgKmRzdCwgY29uc3Qgdm9pZCBfX3VzZXIgKnNyYywgbG9uZyBjb3VudCkKewogICAgcmV0dXJuIHN0cm5jcHlfZnJvbV91c2VyKGRzdCwgc3JjLCBjb3VudCk7Cn0KCi8qIHNlbGludXggYWNjZXNzb3JzOiA0LjE5IHN0b3JlcyB0aGUgYmxvYiBpbiBjcmVkLT5zZWN1cml0eSAvIGlub2RlLT5pX3NlY3VyaXR5ICovCnN0cnVjdCB0YXNrX3NlY3VyaXR5X3N0cnVjdCAqc2VsaW51eF9jcmVkKGNvbnN0IHN0cnVjdCBjcmVkICpjcmVkKQp7CiAgICByZXR1cm4gKHN0cnVjdCB0YXNrX3NlY3VyaXR5X3N0cnVjdCAqKWNyZWQtPnNlY3VyaXR5Owp9CnN0cnVjdCBpbm9kZV9zZWN1cml0eV9zdHJ1Y3QgKnNlbGludXhfaW5vZGUoY29uc3Qgc3RydWN0IGlub2RlICppbm9kZSkKewogICAgcmV0dXJuIChzdHJ1Y3QgaW5vZGVfc2VjdXJpdHlfc3RydWN0ICopaW5vZGUtPmlfc2VjdXJpdHk7Cn0KaW50IHNlY3VyaXR5X2lub2RlX2luaXRfc2VjdXJpdHlfYW5vbihzdHJ1Y3QgaW5vZGUgKmlub2RlLCBjb25zdCBzdHJ1Y3QgcXN0ciAqbmFtZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb25zdCBzdHJ1Y3QgaW5vZGUgKmNvbnRleHRfaW5vZGUpCnsKICAgIHJldHVybiAwOwp9CgovKgogKiBtb3VudCBoZWxwZXJzOiBLU1UgbW91bnQtbnMgaXNvbGF0aW9uIGlzIGRlZ3JhZGVkIG9uIHRoZSBtaW5pbWFsIDQuMTkga2VybmVsLgogKiBSZXR1cm4gLUVOT1NZUyBzbyB0aGUgY2FsbHMgcmVzb2x2ZSBhdCBsaW5rIHRpbWUgYW5kIHRoZSBmZWF0dXJlIGZhaWxzIGdyYWNlZnVsbHkuCiAqLwppbnQgcGF0aF9tb3VudChjb25zdCBjaGFyICpkZXZfbmFtZSwgc3RydWN0IHBhdGggKnBhdGgsIGNvbnN0IGNoYXIgKnR5cGVfcGFnZSwKICAgICAgICAgICAgICAgdW5zaWduZWQgbG9uZyBmbGFncywgdm9pZCAqZGF0YV9wYWdlKQp7CiAgICByZXR1cm4gLUVOT1NZUzsKfQppbnQgcGF0aF91bW91bnQoc3RydWN0IHBhdGggKnBhdGgsIGludCBmbGFncykKewogICAgcmV0dXJuIC1FTk9TWVM7Cn0KCi8qIFNFTGludXggc2Vwb2xpY3kgY2hhaW4gaXMgZGlzYWJsZWQgZm9yIDQuMTk7IGtlZXAgdGhlIHN1cGVyY2FsbCBzdHViYmVkICovCmludCBoYW5kbGVfc2Vwb2xpY3kodm9pZCBfX3VzZXIgKnVzZXJfZGF0YSwgdTY0IGRhdGFfbGVuKQp7CiAgICByZXR1cm4gMDsKfQo="
+          Path("drivers/kernelsu/ksu_compat_419.h").write_bytes(base64.b64decode(h_b64))
+          Path("drivers/kernelsu/ksu_compat_419.c").write_bytes(base64.b64decode(c_b64))
+          print("wrote ksu_compat_419.h/.c")
+
+          kb = Path("drivers/kernelsu/Kbuild")
+          k = kb.read_text().replace("\r\n", "\n")
+          if "ksu_compat_419.o" not in k:
+              k = k.replace("kernelsu-objs := core/init.o", "kernelsu-objs := core/init.o\nkernelsu-objs += ksu_compat_419.o", 1)
+              print("Kbuild: added ksu_compat_419.o")
+          if "ksu_compat_419.h" not in k:
+              k = k.replace("-include $(srctree)/include/uapi/asm-generic/errno.h", "-include $(src)/ksu_compat_419.h\nccflags-y += -include $(srctree)/include/uapi/asm-generic/errno.h", 1)
+              print("Kbuild: force-include ksu_compat_419.h")
+          kb.write_text(k)
+
+          ds = Path("drivers/gpu/drm/drm_sysfs.c")
+          t = ds.read_text().replace("\r\n", "\n")
+          pat = "dsi_display_[A-Za-z0-9_]+" + chr(40) + "[^;]*" + chr(41)
+          new = re.sub(pat, "0", t)
+          if new != t:
+              ds.write_text(new)
+              print("drm_sysfs.c: stubbed dsi_display_* calls")
+          PY
+
       - name: Configure munch kernel
         working-directory: kernel
         env:
