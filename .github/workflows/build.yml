@@ -939,7 +939,14 @@ jobs:
               k = k.replace("kernelsu-objs := core/init.o", "kernelsu-objs := core/init.o\nkernelsu-objs += ksu_compat_419.o", 1)
               print("Kbuild: added ksu_compat_419.o")
           if "ksu_compat_419.h" not in k:
-              k = k.replace("-include $(srctree)/include/uapi/asm-generic/errno.h", "-include $(src)/ksu_compat_419.h\nccflags-y += -include $(srctree)/include/uapi/asm-generic/errno.h", 1)
+              # O=out 异源构建时 GCC 的工作目录是 out/,$(src) 展开成相对路径
+              # drivers/kernelsu/ksu_compat_419.h 在 out/ 下找不到 -> 改用 ccflags-y +
+              # $(srctree)(源码根,绝对可解析),force-include 才稳定生效
+              k = k.replace(
+                  "-include $(srctree)/include/uapi/asm-generic/errno.h",
+                  "ccflags-y += -include $(srctree)/drivers/kernelsu/ksu_compat_419.h\n-include $(srctree)/include/uapi/asm-generic/errno.h",
+                  1,
+              )
               print("Kbuild: force-include ksu_compat_419.h")
           kb.write_text(k)
 
