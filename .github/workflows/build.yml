@@ -799,6 +799,24 @@ jobs:
                   print("WARNING: dispatch.c anchor not found")
           else:
               print("dispatch.c: sched/task.h already included")
+
+          # ========== 10. 充电驱动浮点豁免(GCC14 严格报错) ==========
+          # bq2597x 快充驱动在 kernel_neon_begin/end 内用 float 计算
+          # 小米官方用老 GCC 只警告,GCC14 把 -mgeneral-regs-only + float 升级为错误
+          # 该驱动已用 NEON 保护,运行时安全 -> 去掉该文件的 -mgeneral-regs-only
+          ti = Path("drivers/power/supply/ti/Makefile")
+          tsrc = ti.read_text().replace("\r\n", "\n")
+          add = (
+              "# GCC14: -mgeneral-regs-only rejects float even inside kernel_neon_begin (Xiaomi used old GCC)\n"
+              "CFLAGS_REMOVE_bq2597x_charger.o += -mgeneral-regs-only\n"
+              "CFLAGS_REMOVE_bq2597x_charger_munch.o += -mgeneral-regs-only\n"
+          )
+          if "CFLAGS_REMOVE_bq2597x" not in tsrc:
+              tsrc = tsrc.rstrip() + "\n\n" + add
+              ti.write_text(tsrc)
+              print("ti/Makefile: added CFLAGS_REMOVE -mgeneral-regs-only for bq2597x")
+          else:
+              print("ti/Makefile: already patched")
           PY
 
       - name: Check out pinned AnyKernel3
