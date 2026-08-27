@@ -42,6 +42,31 @@ jobs:
           test -x proton-clang/proton-clang-20210522/bin/clang
           proton-clang/proton-clang-20210522/bin/clang --version | head -2
 
+      - name: Patch build.sh (KPROBES + KSU_MANUAL_HOOK for 4.19)
+        working-directory: kernel
+        run: |
+          # 修复 koyufox build.sh 的两个 4.19 坑:
+          # 1. SukiSU 4.x config KSU depends on KPROBES,但 build.sh 没 enable
+          #    -> olddefconfig 会把 KSU 静默降为 n,KSU 根本不编译进内核
+          # 2. sukisu-kpm 分支会 -d KSU_MANUAL_HOOK,但非 GKI 4.19 需要它
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("build.sh")
+          s = p.read_text()
+          n1 = s.count("scripts/config --file out/.config -e KSU\n")
+          s = s.replace(
+              "scripts/config --file out/.config -e KSU\n",
+              "scripts/config --file out/.config -e KSU -e KPROBES -e KALLSYMS -e KALLSYMS_ALL\n", 1)
+          print(f"patched KSU enable line ({n1} found, 1 replaced)")
+          n2 = s.count("scripts/config --file out/.config -d KSU_MANUAL_HOOK")
+          s = s.replace(
+              "scripts/config --file out/.config -d KSU_MANUAL_HOOK",
+              "scripts/config --file out/.config -e KSU_MANUAL_HOOK")
+          print(f"patched KSU_MANUAL_HOOK ({n2} -> enable)")
+          p.write_text(s)
+          print("build.sh patched OK")
+          PY
+
       - name: Build munch SukiSU-KPM for MIUI
         working-directory: kernel
         run: |
