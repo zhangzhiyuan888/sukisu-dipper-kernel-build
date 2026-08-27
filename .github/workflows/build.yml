@@ -784,6 +784,21 @@ jobs:
               print("sulog/event.c: minmax.h -> kernel.h")
           else:
               print("WARNING: sulog/event.c minmax.h not found (already fixed?)")
+
+          # ========== 9. dispatch.c: 补 sched/task.h include ==========
+          # 4.19 的 tasklist_lock/init_task 声明在 linux/sched/task.h,dispatch.c 没 include
+          dc = Path("drivers/kernelsu/supercall/dispatch.c")
+          dsrc = dc.read_text().replace("\r\n", "\n")
+          if "#include <linux/sched/task.h>" not in dsrc:
+              anchor = "#include <linux/thread_info.h>\n"
+              if anchor in dsrc:
+                  dsrc = dsrc.replace(anchor, anchor + "#include <linux/sched/task.h>\n", 1)
+                  dc.write_text(dsrc)
+                  print("dispatch.c: added linux/sched/task.h include")
+              else:
+                  print("WARNING: dispatch.c anchor not found")
+          else:
+              print("dispatch.c: sched/task.h already included")
           PY
 
       - name: Check out pinned AnyKernel3
