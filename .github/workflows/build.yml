@@ -773,6 +773,17 @@ jobs:
                   print(f"WARNING: ksud_integration.c {old} not found")
           ki3.write_text(ksrc3)
           print("selinux rules/hide disabled for 4.19")
+
+          # ========== 8. sulog/event.c: minmax.h(5.2+) -> kernel.h ==========
+          # 只用 min/min_t,4.19 里都在 linux/kernel.h
+          ev = Path("drivers/kernelsu/sulog/event.c")
+          esrc = ev.read_text().replace("\r\n", "\n")
+          if "#include <linux/minmax.h>" in esrc:
+              esrc = esrc.replace("#include <linux/minmax.h>", "#include <linux/kernel.h> /* 4.19: min/min_t in kernel.h */", 1)
+              ev.write_text(esrc)
+              print("sulog/event.c: minmax.h -> kernel.h")
+          else:
+              print("WARNING: sulog/event.c minmax.h not found (already fixed?)")
           PY
 
       - name: Check out pinned AnyKernel3
