@@ -686,6 +686,30 @@ jobs:
                   print(f"{f}: patched (TWA_RESUME->true, fallthrough->attr)")
               else:
                   print(f"{f}: no changes needed")
+
+          # ========== 6. app_profile.c: seccomp 禁用逻辑 4.19 适配 ==========
+          # filter_count 字段 5.5+ 才有 -> 删除(4.19 只需 mode=0 + filter=NULL)
+          # seccomp_filter_release 函数 5.11+ 才有 -> 换 4.19 的 put_seccomp_filter(等价释放)
+          ap = Path("drivers/kernelsu/policy/app_profile.c")
+          asrc = ap.read_text().replace("\r\n", "\n")
+          a_changed = False
+          c1 = "    atomic_set(&current->seccomp.filter_count, 0);\n"
+          if c1 in asrc:
+              asrc = asrc.replace(c1, "    /* filter_count is 5.5+, not in 4.19 */\n", 1)
+              a_changed = True
+              print("app_profile.c: removed filter_count line")
+          else:
+              print("app_profile.c: filter_count line not found (already fixed?)")
+          c2 = "    seccomp_filter_release(fake);"
+          if c2 in asrc:
+              asrc = asrc.replace(c2, "    put_seccomp_filter(fake); /* 4.19 equivalent */", 1)
+              a_changed = True
+              print("app_profile.c: seccomp_filter_release -> put_seccomp_filter")
+          else:
+              print("app_profile.c: seccomp_filter_release call not found (already fixed?)")
+          if a_changed:
+              ap.write_text(asrc)
+              print("app_profile.c patched for 4.19")
           PY
 
       - name: Check out pinned AnyKernel3
