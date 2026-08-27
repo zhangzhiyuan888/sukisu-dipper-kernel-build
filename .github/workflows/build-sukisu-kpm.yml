@@ -42,44 +42,47 @@ jobs:
           test -x proton-clang/proton-clang-20210522/bin/clang
           proton-clang/proton-clang-20210522/bin/clang --version | head -2
 
-      - name: Patch build.sh (KPROBES + KSU_MANUAL_HOOK + lock SukiSU tag for 4.19)
+      - name: Patch build.sh (KPROBES + KSU_MANUAL_HOOK + lock SukiSU v3.2.0 + SusFS integration)
         working-directory: kernel
         run: |
-          # 修复 koyufox build.sh 的三个 4.19 坑:
-          # 1. SukiSU 4.x config KSU depends on KPROBES,但 build.sh 没 enable
-          #    -> olddefconfig 会把 KSU 静默降为 n,KSU 根本不编译进内核
-          # 2. sukisu-kpm 分支会 -d KSU_MANUAL_HOOK,但非 GKI 4.19 需要它
-          # 3. build.sh 用 'setup.sh -s nongki' 是旧接口(已失效,回退 main 最新)
-          #    SukiSU main 的 KPM 代码已改用 5.x access_ok(2参),4.19 编译失败
-          #    -> 锁定到稳定 tag v4.1.3 (KPM 代码仍是 4.19 时代)
           python3 - <<'PY'
           from pathlib import Path
+          import base64
           p = Path("build.sh")
           s = p.read_text()
+
+          # 1) Lock SukiSU to v3.2.0 (last KPM-compatible 4.19 release) for BOTH sukisu and sukisu-kpm cases.
+          #    Target the exact curl|bash line so we don't touch the rsuntk (rksu) one.
+          n = s.count('curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki')
+          s = s.replace(
+              'curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki',
+              'curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/v3.2.0/kernel/setup.sh" | bash -s v3.2.0')
+          print(f"patched SukiSU setup -> v3.2.0 ({n} occurrence(s))")
+
+          # 2) SukiSU depends on KPROBES (else olddefconfig silently drops KSU);
+          #    enable KALLSYMS (KPM needs it) and KSU_SUSFS.
           n1 = s.count("scripts/config --file out/.config -e KSU\n")
           s = s.replace(
               "scripts/config --file out/.config -e KSU\n",
               "scripts/config --file out/.config -e KSU -e KPROBES -e KALLSYMS -e KALLSYMS_ALL -e KSU_SUSFS\n", 1)
-          print(f"patched KSU enable line ({n1} found, +KPROBES+KALLSYMS+KSU_SUSFS)")
+          print(f"patched -e KSU line ({n1} found, +KPROBES+KALLSYMS+KSU_SUSFS)")
+
+          # 3) sukisu-kpm branch does '-d KSU_MANUAL_HOOK'; non-GKI 4.19 needs manual hooks -> enable.
           n2 = s.count("scripts/config --file out/.config -d KSU_MANUAL_HOOK")
           s = s.replace(
               "scripts/config --file out/.config -d KSU_MANUAL_HOOK",
               "scripts/config --file out/.config -e KSU_MANUAL_HOOK")
           print(f"patched KSU_MANUAL_HOOK ({n2} -> enable)")
-          n3 = s.count("bash -s nongki")
-          s = s.replace("bash -s nongki", "bash -s v3.2.0")
-          print(f"patched setup.sh arg nongki -> v3.2.0 ({n3} replaced)")
 
-          # 4. v4.1.3 的 4.19 兼容补丁(在 setup.sh 集成 KSU 源码后执行):
-          #    a. init.c: MODULE_IMPORT_NS 是 5.4+ 宏 -> #if 包起来
-          #    b. sucompat.c: linux/pgtable.h 是 5.0+ 头 -> 删除(未用其符号)
-          #    (base64 编码避免 YAML 缩进问题)
-          import base64
-          inject = base64.b64decode("IyAtLS0tIFN1a2lTVSB2My4yLjAgNC4xOSDpm4bmiJA6IGNvbXBhdCBwYXRjaGVzICsgb2ZmaWNpYWwgaG9va3MgKyBTdXNGUyAtLS0tCnB5dGhvbjMgLSA8PCdQQVRDSF9LU1VfNDE5Jwpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKCiMgMS4ga3N1LmM6IE1PRFVMRV9JTVBPUlRfTlMgaXMgNS40Kywgd3JhcCBpbiAjaWYKa3MgPSBQYXRoKCJkcml2ZXJzL2tlcm5lbHN1L2tzdS5jIikKaWYga3MuZXhpc3RzKCk6CiAgICBzcmMgPSBrcy5yZWFkX3RleHQoKS5yZXBsYWNlKCJcclxuIiwgIlxuIikKICAgIG9sZCA9ICdNT0RVTEVfSU1QT1JUX05TKFZGU19pbnRlcm5hbF9JX2FtX3JlYWxseV9hX2ZpbGVzeXN0ZW1fYW5kX2FtX05PVF9hX2RyaXZlcik7XG4nCiAgICBuZXcgPSAnI2lmIExJTlVYX1ZFUlNJT05fQ09ERSA+PSBLRVJORUxfVkVSU0lPTig1LCA0LCAwKVxuTU9EVUxFX0lNUE9SVF9OUyhWRlNfaW50ZXJuYWxfSV9hbV9yZWFsbHlfYV9maWxlc3lzdGVtX2FuZF9hbV9OT1RfYV9kcml2ZXIpO1xuI2VuZGlmXG4nCiAgICBpZiBvbGQgaW4gc3JjOgogICAgICAgIGtzLndyaXRlX3RleHQoc3JjLnJlcGxhY2Uob2xkLCBuZXcsIDEpKQogICAgICAgIHByaW50KCJrc3UuYzogTU9EVUxFX0lNUE9SVF9OUyB3cmFwcGVkICgjaWYgNS40KykiKQogICAgZWxzZToKICAgICAgICBwcmludCgia3N1LmM6IE1PRFVMRV9JTVBPUlRfTlMgbm90IGZvdW5kIChhbHJlYWR5IHBhdGNoZWQ/KSIpCmVsc2U6CiAgICBwcmludCgiV0FSTklORzogZHJpdmVycy9rZXJuZWxzdS9rc3UuYyBub3QgZm91bmQiKQoKIyAyLiBydWxlcy5jOiBnZXRfcG9saWN5ZGIgdXNlcyA1Lnggc2VsaW51eF9zdGF0ZS5wb2xpY3kgLT4gNC4xOSBzcy0+cG9saWN5ZGIKcmMgPSBQYXRoKCJkcml2ZXJzL2tlcm5lbHN1L3NlbGludXgvcnVsZXMuYyIpCmlmIHJjLmV4aXN0cygpOgogICAgc3JjID0gcmMucmVhZF90ZXh0KCkucmVwbGFjZSgiXHJcbiIsICJcbiIpCiAgICBvbGQgPSAiIiJzdHJ1Y3QgcG9saWN5ZGIgKmRiOwpcdHN0cnVjdCBzZWxpbnV4X3BvbGljeSAqcG9saWN5ID0gc2VsaW51eF9zdGF0ZS5wb2xpY3k7Clx0ZGIgPSAmcG9saWN5LT5wb2xpY3lkYjsKXHRyZXR1cm4gZGI7IiIiCiAgICBuZXcgPSAiIiJzdHJ1Y3QgcG9saWN5ZGIgKmRiOwojaWYgTElOVVhfVkVSU0lPTl9DT0RFID49IEtFUk5FTF9WRVJTSU9OKDUsIDEsIDApClx0c3RydWN0IHNlbGludXhfcG9saWN5ICpwb2xpY3kgPSBzZWxpbnV4X3N0YXRlLnBvbGljeTsKXHRkYiA9ICZwb2xpY3ktPnBvbGljeWRiOwojZWxzZQpcdGRiID0gJnNlbGludXhfc3RhdGUuc3MtPnBvbGljeWRiOwojZW5kaWYKXHRyZXR1cm4gZGI7IiIiCiAgICBpZiBvbGQgaW4gc3JjOgogICAgICAgIHJjLndyaXRlX3RleHQoc3JjLnJlcGxhY2Uob2xkLCBuZXcsIDEpKQogICAgICAgIHByaW50KCJydWxlcy5jOiBnZXRfcG9saWN5ZGIgNC4xOSBjb21wYXQgKHNzLT5wb2xpY3lkYikiKQogICAgZWxzZToKICAgICAgICBwcmludCgicnVsZXMuYzogZ2V0X3BvbGljeWRiIGJsb2NrIG5vdCBmb3VuZCAoYWxyZWFkeSBwYXRjaGVkPykiKQplbHNlOgogICAgcHJpbnQoIldBUk5JTkc6IGRyaXZlcnMva2VybmVsc3Uvc2VsaW51eC9ydWxlcy5jIG5vdCBmb3VuZCIpClBBVENIX0tTVV80MTkKCiMgLS0tLSBvZmZpY2lhbCA0LjE5IG1hbnVhbCBob29rcyAoU3VraVNVX3BhdGNoIHJlcG8pIC0tLS0KIyBrb3l1Zm94IGJ1aWxkLnNoIOW8gCBLU1VfTUFOVUFMX0hPT0ssIOS9hiA0LjE5IOWGheaguOe8uuWwkeiwg+eUqOeCuSAtPiDlv4XpobvmiZPlrpjmlrkgaG9vayDooaXkuIEKY3VybCAtTFNzICJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vU3VraVNVLVVsdHJhL1N1a2lTVV9wYXRjaC9tYWluLzQuMTkva3N1X2hvb2tzX3N1a2lzdV80LjE5LnBhdGNoIiAtbyBrc3VfaG9va3NfNDE5LnBhdGNoCnBhdGNoIC1wMSAtLWZvcndhcmQgPCBrc3VfaG9va3NfNDE5LnBhdGNoIHx8IGVjaG8gIldBUk5JTkc6IGtzdV9ob29rc180MTkucGF0Y2ggcGFydGlhbCAoY2hlY2sgLnJlaikiCnJtIC1mIGtzdV9ob29rc180MTkucGF0Y2gKCiMgLS0tLSBTdXNGUyBrZXJuZWwtNC4xOSBpbnRlZ3JhdGlvbiAtLS0tCmdpdCBjbG9uZSAtYiBrZXJuZWwtNC4xOSAtLWRlcHRoIDEgaHR0cHM6Ly9naXRsYWIuY29tL3NpbW9ucHVuay9zdXNmczRrc3UuZ2l0IHN1c2ZzNGtzdQpjcCBzdXNmczRrc3Uva2VybmVsX3BhdGNoZXMvS2VybmVsU1UvMTBfZW5hYmxlX3N1c2ZzX2Zvcl9rc3UucGF0Y2ggS2VybmVsU1UvCmNwIHN1c2ZzNGtzdS9rZXJuZWxfcGF0Y2hlcy81MF9hZGRfc3VzZnNfaW5fa2VybmVsLTQuMTkucGF0Y2ggLi8KY3AgLXIgc3VzZnM0a3N1L2tlcm5lbF9wYXRjaGVzL2ZzLyogZnMvCm1rZGlyIC1wIGluY2x1ZGUvbGludXgKY3AgLXIgc3VzZnM0a3N1L2tlcm5lbF9wYXRjaGVzL2luY2x1ZGUvbGludXgvKiBpbmNsdWRlL2xpbnV4LwojIDEwLnBhdGNoIOWfuuS6juWumOaWuSBLZXJuZWxTVSwg5a+5IFN1a2lTVSB2My4yLjAg55SoIC0tZm9yd2FyZCDlrrnlv43pg6jliIblpLHotKUKY2QgS2VybmVsU1UgJiYgcGF0Y2ggLXAxIC0tZm9yd2FyZCA8IDEwX2VuYWJsZV9zdXNmc19mb3Jfa3N1LnBhdGNoIHx8IGVjaG8gIldBUk5JTkc6IHN1c2ZzIDEwLnBhdGNoIHBhcnRpYWwgKGNoZWNrIC5yZWopIgpjZCAuLgpwYXRjaCAtcDEgLS1mb3J3YXJkIDwgNTBfYWRkX3N1c2ZzX2luX2tlcm5lbC00LjE5LnBhdGNoIHx8IGVjaG8gIldBUk5JTkc6IHN1c2ZzIDUwLnBhdGNoIHBhcnRpYWwgKGNoZWNrIC5yZWopIgojIOiLpSAxMC5wYXRjaCDnmoQgS2NvbmZpZyBodW5rIOWksei0pSwg5omL5Yqo6KGlIEtTVV9TVVNGUyDoj5zljZUgKHYzLjIuMCBLY29uZmlnIOaciSBLUE0g6aG5LCDkuIrkuIvmlofkuI3lkIwpCnB5dGhvbjMgLSA8PCdQQVRDSF9TVVNGU19LQycKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmtjID0gUGF0aCgiZHJpdmVycy9rZXJuZWxzdS9LY29uZmlnIikKaWYga2MuZXhpc3RzKCk6CiAgICBzcmMgPSBrYy5yZWFkX3RleHQoKQogICAgaWYgImNvbmZpZyBLU1VfU1VTRlMiIG5vdCBpbiBzcmM6CiAgICAgICAgZXh0cmEgPSAiXG5tZW51IFwiS2VybmVsU1UgLSBTVVNGU1wiXG5jb25maWcgS1NVX1NVU0ZTXG4gICAgYm9vbCBcIktlcm5lbFNVIGFkZG9uIC0gU1VTRlNcIlxuICAgIGRlcGVuZHMgb24gS1NVXG4gICAgZGVmYXVsdCB5XG5lbmRtZW51XG4iCiAgICAgICAgIyDlnKggZW5kbWVudSDliY3mj5LlhaUgKHYzLjIuMCBLY29uZmlnIOS7pSBlbmRtZW51IOe7k+WwvikKICAgICAgICBpZiBzcmMucnN0cmlwKCkuZW5kc3dpdGgoImVuZG1lbnUiKToKICAgICAgICAgICAgc3JjID0gc3JjLnJzdHJpcCgpWzotbGVuKCJlbmRtZW51IildICsgZXh0cmEgKyAiZW5kbWVudVxuIgogICAgICAgICAgICBrYy53cml0ZV90ZXh0KHNyYykKICAgICAgICAgICAgcHJpbnQoIktjb25maWc6IEtTVV9TVVNGUyBtZW51IG1hbnVhbGx5IGFkZGVkIikKICAgICAgICBlbHNlOgogICAgICAgICAgICBwcmludCgiS2NvbmZpZzogZW5kbWVudSBub3QgYXQgZW5kLCBtYW51YWwgYWRkIHNraXBwZWQiKQogICAgZWxzZToKICAgICAgICBwcmludCgiS2NvbmZpZzogS1NVX1NVU0ZTIGFscmVhZHkgcHJlc2VudCIpCmVsc2U6CiAgICBwcmludCgiV0FSTklORzogZHJpdmVycy9rZXJuZWxzdS9LY29uZmlnIG5vdCBmb3VuZCIpClBBVENIX1NVU0ZTX0tDCmVjaG8gIj09PSBTdWtpU1UgdjMuMi4wICsgU3VzRlMgaW50ZWdyYXRpb24gZG9uZSA9PT0iCg==").decode("utf-8")
+          # 4) Embed the SusFS 4.19 integration script (base64) right before "Cleaning...".
+          B64 = "IyA9PT09PSBTdWtpU1UgdjMuMi4wICsgU3VzRlMgNC4xOSBpbnRlZ3JhdGlvbiAoa295dWZveCBkcmlmdCBmaXh1cHMpID09PT09CiMgUnVucyBmcm9tIGtlcm5lbCBzb3VyY2Ugcm9vdCwgQUZURVIgc2V0dXAuc2ggaGFzIGNsb25lZCBTdWtpU1UgaW50byBLZXJuZWxTVS8KZWNobyAiPT09IFN1a2lTVSB2My4yLjAgKyBTdXNGUyBpbnRlZ3JhdGlvbiA9PT0iCgojIDApIG9mZmljaWFsIDQuMTkgbWFudWFsIGhvb2tzIChjYWxsIHNpdGVzIGluIGtlcm5lbCBjb3JlLCBuZWVkZWQgd2hlbiBLU1VfTUFOVUFMX0hPT0s9eSkKY3VybCAtTFNzICJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vU3VraVNVLVVsdHJhL1N1a2lTVV9wYXRjaC9tYWluLzQuMTkva3N1X2hvb2tzX3N1a2lzdV80LjE5LnBhdGNoIiAtbyBrc3VfaG9va3NfNDE5LnBhdGNoCnBhdGNoIC1wMSAtLWZvcndhcmQgPCBrc3VfaG9va3NfNDE5LnBhdGNoIHx8IGVjaG8gIldBUk5JTkc6IGtzdV9ob29rc180MTkucGF0Y2ggcGFydGlhbCAoY2hlY2sgLnJlaikiCnJtIC1mIGtzdV9ob29rc180MTkucGF0Y2gKCiMgMSkgU3VzRlMga2VybmVsLTQuMTk6IGFkZCBORVcgc291cmNlIGZpbGVzIChmcy9zdXNmcy5jLCBmcy9zdXNfc3UuYywgaGVhZGVycykgKyBwYXRjaCBleGlzdGluZyBjb3JlIGZpbGVzCmdpdCBjbG9uZSAtYiBrZXJuZWwtNC4xOSAtLWRlcHRoIDEgaHR0cHM6Ly9naXRsYWIuY29tL3NpbW9ucHVuay9zdXNmczRrc3UuZ2l0IHN1c2ZzNGtzdQpjcCBzdXNmczRrc3Uva2VybmVsX3BhdGNoZXMvZnMvKiBmcy8KY3Agc3VzZnM0a3N1L2tlcm5lbF9wYXRjaGVzL2luY2x1ZGUvbGludXgvKiBpbmNsdWRlL2xpbnV4LwpjcCBzdXNmczRrc3Uva2VybmVsX3BhdGNoZXMvS2VybmVsU1UvMTBfZW5hYmxlX3N1c2ZzX2Zvcl9rc3UucGF0Y2ggS2VybmVsU1UvIDI+L2Rldi9udWxsIHx8IHRydWUKKCBjZCBLZXJuZWxTVSAmJiBwYXRjaCAtcDEgLS1mb3J3YXJkIDwgMTBfZW5hYmxlX3N1c2ZzX2Zvcl9rc3UucGF0Y2ggKSB8fCBlY2hvICJXQVJOSU5HOiBzdXNmcyAxMC5wYXRjaCBwYXJ0aWFsIChjaGVjayAucmVqKSIKcGF0Y2ggLXAxIC0tZm9yd2FyZCA8IHN1c2ZzNGtzdS9rZXJuZWxfcGF0Y2hlcy81MF9hZGRfc3VzZnNfaW5fa2VybmVsLTQuMTkucGF0Y2ggfHwgZWNobyAiV0FSTklORzogc3VzZnMgNTAucGF0Y2ggcGFydGlhbCAoY2hlY2sgLnJlaikiCgojIDIpIEZpeCB0aGUgMyBodW5rcyB0aGF0IGZhaWwgb24ga295dWZveCdzIGRyaWZ0ZWQgNC4xOSB0cmVlIChkaWZmZXJlbnQgaW5jbHVkZXMgLyBLQUJJIGxheW91dCkKcHl0aG9uMyAtIDw8J0ZJWFVQJwpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKCiMgKGEpIHRhc2tfbW11LmM6IGFkZCBzdXNmc19kZWYuaCBpbmNsdWRlIChwcm92aWRlcyBJTk9ERV9TVEFURV9TVVNfS1NUQVQgLyBJTk9ERV9TVEFURV9TVVNfUEFUSCAvIFRBU0tfU1RSVUNUXyopCnAgPSBQYXRoKCJmcy9wcm9jL3Rhc2tfbW11LmMiKQppZiBwLmV4aXN0cygpOgogICAgcyA9IHAucmVhZF90ZXh0KCkKICAgIGlmICIjaW5jbHVkZSA8bGludXgvc3VzZnNfZGVmLmg+IiBub3QgaW4gczoKICAgICAgICBzID0gcy5yZXBsYWNlKCIjaW5jbHVkZSA8YXNtL2VsZi5oPiIsCiAgICAgICAgICAgICAgICAgICAgICAiI2luY2x1ZGUgPGxpbnV4L3N1c2ZzX2RlZi5oPlxuI2luY2x1ZGUgPGFzbS9lbGYuaD4iLCAxKQogICAgICAgIHAud3JpdGVfdGV4dChzKQogICAgICAgIHByaW50KCJ0YXNrX21tdS5jOiBzdXNmc19kZWYuaCBpbmNsdWRlIGFkZGVkIikKICAgIGVsc2U6CiAgICAgICAgcHJpbnQoInRhc2tfbW11LmM6IHN1c2ZzX2RlZi5oIGFscmVhZHkgcHJlc2VudCIpCmVsc2U6CiAgICBwcmludCgiV0FSTklORzogZnMvcHJvYy90YXNrX21tdS5jIG5vdCBmb3VuZCIpCgojIChiKSBzY2hlZC5oOiBhZGQgU3VzRlMgdGFza19zdHJ1Y3QgZmllbGRzIChyZWZlcmVuY2VkIHZpYSBjdXJyZW50LT5zdXNmc190YXNrX3N0YXRlKQpwID0gUGF0aCgiaW5jbHVkZS9saW51eC9zY2hlZC5oIikKaWYgcC5leGlzdHMoKToKICAgIHMgPSBwLnJlYWRfdGV4dCgpCiAgICBpZiAic3VzZnNfdGFza19zdGF0ZSIgbm90IGluIHM6CiAgICAgICAgbWFya2VyID0gInJhbmRvbWl6ZWRfc3RydWN0X2ZpZWxkc19lbmQiCiAgICAgICAgaWYgbWFya2VyIGluIHM6CiAgICAgICAgICAgIGlucyA9ICJcbiNpZiBkZWZpbmVkKENPTkZJR19LU1VfU1VTRlMpXG4gICAgdTY0IHN1c2ZzX3Rhc2tfc3RhdGU7XG4gICAgdTY0IHN1c2ZzX2xhc3RfZmFrZV9tbnRfaWQ7XG4jZW5kaWZcbiIKICAgICAgICAgICAgcyA9IHMucmVwbGFjZShtYXJrZXIsIGlucyArIG1hcmtlciwgMSkKICAgICAgICAgICAgcC53cml0ZV90ZXh0KHMpCiAgICAgICAgICAgIHByaW50KCJzY2hlZC5oOiBzdXNmc190YXNrX3N0YXRlIC8gc3VzZnNfbGFzdF9mYWtlX21udF9pZCBhZGRlZCIpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgcHJpbnQoInNjaGVkLmg6IHJhbmRvbWl6ZWRfc3RydWN0X2ZpZWxkc19lbmQgbm90IGZvdW5kISIpCiAgICBlbHNlOgogICAgICAgIHByaW50KCJzY2hlZC5oOiBzdXNmc190YXNrX3N0YXRlIGFscmVhZHkgcHJlc2VudCIpCmVsc2U6CiAgICBwcmludCgiV0FSTklORzogaW5jbHVkZS9saW51eC9zY2hlZC5oIG5vdCBmb3VuZCIpCkZJWFVQCgojIDMpIEtjb25maWc6IGVuc3VyZSBLU1VfU1VTRlMgbWVudSBleGlzdHMgKGtveXVmb3ggYWxyZWFkeSBoYXMgaXQ7IHRoaXMgaXMgYSBoYXJtbGVzcyBmYWxsYmFjaykKcHl0aG9uMyAtIDw8J0tDRkcnCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAprYyA9IFBhdGgoImRyaXZlcnMva2VybmVsc3UvS2NvbmZpZyIpCmlmIGtjLmV4aXN0cygpOgogICAgcyA9IGtjLnJlYWRfdGV4dCgpCiAgICBpZiAiY29uZmlnIEtTVV9TVVNGUyIgbm90IGluIHM6CiAgICAgICAgZXh0cmEgPSAiXG5tZW51IFwiS2VybmVsU1UgLSBTVVNGU1wiXG5jb25maWcgS1NVX1NVU0ZTXG4gICAgYm9vbCBcIktlcm5lbFNVIGFkZG9uIC0gU1VTRlNcIlxuICAgIGRlcGVuZHMgb24gS1NVXG4gICAgZGVmYXVsdCB5XG5lbmRtZW51XG4iCiAgICAgICAgaWYgcy5yc3RyaXAoKS5lbmRzd2l0aCgiZW5kbWVudSIpOgogICAgICAgICAgICBzID0gcy5yc3RyaXAoKVs6LWxlbigiZW5kbWVudSIpXSArIGV4dHJhICsgImVuZG1lbnVcbiIKICAgICAgICBlbHNlOgogICAgICAgICAgICBzID0gcyArIGV4dHJhCiAgICAgICAga2Mud3JpdGVfdGV4dChzKQogICAgICAgIHByaW50KCJLY29uZmlnOiBLU1VfU1VTRlMgbWVudSBtYW51YWxseSBhZGRlZCIpCiAgICBlbHNlOgogICAgICAgIHByaW50KCJLY29uZmlnOiBLU1VfU1VTRlMgYWxyZWFkeSBwcmVzZW50IikKZWxzZToKICAgIHByaW50KCJXQVJOSU5HOiBkcml2ZXJzL2tlcm5lbHN1L0tjb25maWcgbm90IGZvdW5kIikKS0NGRwoKcm0gLXJmIHN1c2ZzNGtzdQplY2hvICI9PT0gU3VraVNVIHYzLjIuMCArIFN1c0ZTIGludGVncmF0aW9uIGRvbmUgPT09Igo="
+          inject = base64.b64decode(B64).decode("utf-8")
           anchor = 'echo "Cleaning..."'
-          na = s.count(anchor)
-          s = s.replace(anchor, inject + anchor, 1)
-          print(f"injected 4.19 compat patch before 'Cleaning...' ({na} anchor found)")
+          if anchor in s:
+              s = s.replace(anchor, inject + "\n" + anchor, 1)
+              print("injected SusFS integration before 'Cleaning...'")
+          else:
+              print("WARNING: anchor 'Cleaning...' not found!")
 
           p.write_text(s)
           print("build.sh patched OK")
@@ -90,7 +93,7 @@ jobs:
         run: |
           bash build.sh munch sukisu-kpm miui 2>&1 | tee /tmp/build.log
           echo "=== build log tail ==="
-          tail -20 /tmp/build.log
+          tail -25 /tmp/build.log
           echo "=== flashable zip ==="
           ls -la *.zip 2>&1
           test -f *.zip && echo "ZIP OK"
