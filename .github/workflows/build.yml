@@ -938,7 +938,8 @@ jobs:
             --enable KPROBES \
             --enable KSU \
             --enable KSU_SUSFS \
-            --disable KPM
+            --disable KPM \
+            --disable NETFILTER_XT_TARGET_DSCP
           make O=out olddefconfig
 
           echo "=== .config KSU related ==="
