@@ -1,0 +1,58 @@
+name: Build munch SukiSU-KPM kernel (koyufox)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KERNEL_REPO: koyufox/kernel_xiaomi_sm8250
+  KERNEL_BRANCH: main
+
+jobs:
+  build-munch:
+    name: Build munch sukisu-kpm miui
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout koyufox kernel source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.KERNEL_REPO }}
+          ref: ${{ env.KERNEL_BRANCH }}
+          path: kernel
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libelf-dev libssl-dev \
+            lld llvm python3 zip unzip git cpio
+
+      - name: Download proton-clang 20210522
+        run: |
+          mkdir -p proton-clang
+          curl -L --fail --retry 3 --retry-delay 5 \
+            "https://github.com/kdrag0n/proton-clang/archive/refs/tags/20210522.zip" -o clang.zip
+          unzip -q clang.zip
+          mv proton-clang-20210522 proton-clang/proton-clang-20210522
+          test -x proton-clang/proton-clang-20210522/bin/clang
+          proton-clang/proton-clang-20210522/bin/clang --version | head -2
+
+      - name: Build munch SukiSU-KPM for MIUI
+        working-directory: kernel
+        run: |
+          bash build.sh munch sukisu-kpm miui 2>&1 | tee /tmp/build.log
+          echo "=== build log tail ==="
+          tail -20 /tmp/build.log
+
+      - name: Upload flashable kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: munch-sukisu-kpm-miui
+          path: kernel/Kernel_*.zip
+          if-no-files-found: error
+          retention-days: 30
